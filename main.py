@@ -1,10 +1,12 @@
 # Final restart of my code
 #notes:
 
-#%% Setup
+
 seeded_run = True
+prototyping = True
 parameter_tuning = False
 num_epochs = 200
+#%% Setup
 # Detecting system
 import platform
 pc = platform.system()
@@ -50,7 +52,8 @@ import sys
 #%% Importing custom libraries
 from Reading_files import readfiles
 from pre_processing import elliptic_pre_processing, create_data_object, create_elliptic_masks
-
+from debugging import print_tensor_info
+from models import GCN
 #%% Getting data ready for models
 features_df, classes_df, edgelist_df = readfiles(pc)
 features_df, classes_df, edgelist_df, known_nodes = elliptic_pre_processing(features_df, classes_df, edgelist_df)
@@ -58,4 +61,23 @@ data = create_data_object(features_df, edgelist_df, classes_df)
 data = data.to('cuda' if torch.cuda.is_available() else 'cpu')
 
 train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval = create_elliptic_masks(data)
+
+print_tensor_info(
+    train_mask=train_mask,
+    val_mask=val_mask,
+    test_mask=test_mask,
+    train_perf_eval=train_perf_eval,
+    val_perf_eval=val_perf_eval,
+    test_perf_eval=test_perf_eval
+)
+#%% Testing if the model runs
+if prototyping == True:
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = GCN(num_node_features=data.num_features, num_classes=data.num_classes, hidden_units=64).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    criterion = nn.CrossEntropyLoss()
+    data = data.to(device)
+    
+    #Beginning training
+    
 # %%

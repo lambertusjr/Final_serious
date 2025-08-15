@@ -25,14 +25,14 @@ def create_data_object(features_df, edgelist_df, classes_df):
 
 def create_elliptic_masks(data):
     #Getting unique time steps
-    time_steps = data.x[:, 1].unique()
+    time_steps = data.x[:, 0].unique()
     #Creating masks depending on time steps
     #Training 0-30
     #Validation 31-40
     #Testing 41-49
-    train_mask = (data.x[:, 1] <= 30) & (data.x[:, 1] >= 1)
-    val_mask = (data.x[:, 1] <= 40) & (data.x[:, 1] >= 31)
-    test_mask = (data.x[:, 1] <= 49) & (data.x[:, 1] >= 41)
+    train_mask = (data.x[:, 0] <= 30) & (data.x[:, 0] >= 1)
+    val_mask = (data.x[:, 0] <= 40) & (data.x[:, 0] >= 31)
+    test_mask = (data.x[:, 0] <= 49) & (data.x[:, 0] >= 41)
     
     #Creating performance evaluation masks for each data split
     
