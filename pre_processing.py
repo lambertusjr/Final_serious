@@ -10,14 +10,22 @@ def elliptic_pre_processing(features_df, classes_df, edgelist_df):
     }
     classes_df['class'] = classes_df['class'].map(class_mapping)
     classes_df['class'] = classes_df['class'].astype(int) 
+    
+    for new_id, old_id in enumerate(features_df['txId']):
+        class_mapping[old_id] = new_id
+    
+    classes_df['txId'] = classes_df['txId'].map(class_mapping)
+    edgelist_df['txId1'] = edgelist_df['txId1'].map(class_mapping)
+    edgelist_df['txId2'] = edgelist_df['txId2'].map(class_mapping) 
+    
     return features_df, classes_df, edgelist_df, known_nodes
 import torch
 from torch_geometric.data import Data
-def create_data_object(features_df, edgelist_df, classes_df):
+def create_data_object(features_df, classes_df, edgelist_df):
     #Converting dataframes to tensors
     features_tensor = torch.tensor(features_df.drop(columns=['txId']).values, dtype=torch.float)
     edgelist_tensor = torch.tensor(edgelist_df.values.T, dtype=torch.long)
-    classes_tensor = torch.tensor(classes_df['class'].values, dtype=torch.int)
+    classes_tensor = torch.tensor(classes_df['class'].values, dtype=torch.long)
     
     data = Data(x = features_tensor, edge_index=edgelist_tensor, y=classes_tensor)
     
