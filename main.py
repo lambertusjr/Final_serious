@@ -4,7 +4,8 @@
 
 seeded_run = False
 prototyping = False
-parameter_tuning = True
+parameter_tuning = False
+validation_runs = True
 num_epochs = 200
 #%% Setup
 # Detecting system
@@ -121,3 +122,41 @@ if parameter_tuning == True:
     study.optimize(lambda trial: objective(trial, data, train_perf_eval, val_perf_eval), n_trials=200)
     print("Best hyperparameters:", study.best_params)
     print("Best value:", study.best_value)
+    
+#%% Validation runs
+
+def run_multiple_experiments(model_class, data, train_mask, val_mask, test_mask,
+                             criterion, params, num_epochs, num_runs=30):
+    all_results = []
+
+    for run in range(num_runs):  # ensures reproducibility but still varied across runs
+
+        model = model_class(
+            num_node_features=data.num_features,
+            num_classes=2,
+            hidden_units=params["hidden_units"]
+        )
+        optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"])
+        wrapper = ModelWrapper(model, optimizer, criterion)
+
+        history = train_and_validate(wrapper, data, train_mask, val_mask, num_epochs)
+        # Evaluate on test set at the end
+        test_loss, test_metrics = wrapper.evaluate(data, test_mask)
+
+        all_results.append({
+            "val_metrics": history["val_metrics"][-1],
+            "test_metrics": test_metrics
+        })
+
+    return all_results
+
+if validation_runs == True:
+    all_results = run_multiple_experiments(model_class=GCN,
+                                           data=data,
+                                           train_mask=train_perf_eval,
+                                           val_mask = val_perf_eval,
+                                           test_mask= test_perf_eval,
+                                           criterion=FocalLoss(gamma=2.5, alpha=0.5, reduction='mean'),
+                                           params={"hidden_units": 128, "lr": 0.045},
+                                           num_epochs=200,
+                                           num_runs=30)
