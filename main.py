@@ -2,9 +2,9 @@
 #notes:
 
 
-seeded_run = True
-prototyping = True
-parameter_tuning = False
+seeded_run = False
+prototyping = False
+parameter_tuning = True
 num_epochs = 200
 #%% Setup
 # Detecting system
@@ -55,6 +55,7 @@ from pre_processing import elliptic_pre_processing, create_data_object, create_e
 from debugging import print_tensor_info
 from models import GCN, ModelWrapper
 from training_functions import train_and_validate
+from Helper_functions import FocalLoss, calculate_metrics
 #%% Getting data ready for models
 features_df, classes_df, edgelist_df = readfiles(pc)
 features_df, classes_df, edgelist_df, known_nodes = elliptic_pre_processing(features_df, classes_df, edgelist_df)
@@ -75,11 +76,48 @@ print_tensor_info(
 if prototyping == True:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.05, weight_decay=5e-4)
     criterion = nn.CrossEntropyLoss()
     data = data.to(device)
+    train_perf_eval = train_perf_eval.to(device)
+    val_perf_eval = val_perf_eval.to(device)
     model_wrapper = ModelWrapper(model, optimizer, criterion)
     #Beginning training
     metrics, best_model_wts = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
     
-# %%
+#%% Optuna
+
+def objective(trial, data, train_perf_eval, val_perf_eval):
+    #Setting hyperparameters for optuna runs
+    hidden_units = trial.suggest_categorical("hidden_units", [16, 32, 48, 64, 128])
+    learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-1, log=True)
+    weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
+    
+    alpha = trial.suggest_float("alpha", 0.2, 0.7)
+    gamma = trial.suggest_float("gamma", 2.0, 5.0)
+    criterion = FocalLoss(alpha=alpha, gamma=gamma, reduction='mean')
+    
+    model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to('cuda' if torch.cuda.is_available() else 'cpu')
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    
+    model_wrapper = ModelWrapper(model, optimizer, criterion)
+    
+    metrics, best_model_wts = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    
+    
+    return metrics['f1_illicit']
+
+if parameter_tuning == True:
+    import optuna
+    #criterion = nn.CrossEntropyLoss()
+    
+    study = optuna.create_study(
+        direction="maximize",
+        study_name="GCN Hyperparameter Optimization",
+        storage="sqlite:///db.sqlite3",
+        load_if_exists=True
+        )
+    
+    study.optimize(lambda trial: objective(trial, data, train_perf_eval, val_perf_eval), n_trials=200)
+    print("Best hyperparameters:", study.best_params)
+    print("Best value:", study.best_value)

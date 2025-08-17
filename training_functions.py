@@ -21,6 +21,7 @@ def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_
         print(f'Epoch {epoch+1}/{num_epochs}')
         train_loss = model_wrapper.train_step(data, train_perf_eval)
         val_loss, val_metrics = model_wrapper.evaluate(data, val_perf_eval)
+        print(f'Validation F1 Score: {val_metrics["f1_illicit"]:.4f}')
         
         metrics['precision_weighted'].append(val_metrics['precision_weighted'])
         metrics['precision_illicit'].append(val_metrics['precision_illicit'])
@@ -29,10 +30,10 @@ def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_
         metrics['f1_weighted'].append(val_metrics['f1_weighted'])
         metrics['f1_illicit'].append(val_metrics['f1_illicit'])
         
-        best_f1, best_model_wts = update_best_weights(model_wrapper.model, best_f1, val_metrics['f1_illicit'])
+        best_f1, best_model_wts = update_best_weights(model_wrapper.model, best_f1, val_metrics['f1_illicit'], best_f1_model_wts)
     return metrics, best_model_wts
 import copy
-def update_best_weights(model, best_f1, current_f1):
+def update_best_weights(model, best_f1, current_f1, best_f1_model_wts):
     if current_f1 > best_f1:
         best_f1 = current_f1
         best_f1_model_wts = copy.deepcopy(model.state_dict())
