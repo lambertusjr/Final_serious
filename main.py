@@ -4,6 +4,7 @@
 
 seeded_run = False
 prototyping = False
+MLP_prototype = True
 parameter_tuning = False
 validation_runs = True
 num_epochs = 200
@@ -54,8 +55,8 @@ import sys
 from Reading_files import readfiles
 from pre_processing import elliptic_pre_processing, create_data_object, create_elliptic_masks
 from debugging import print_tensor_info
-from models import GCN, ModelWrapper
-from training_functions import train_and_validate
+from models import GCN, ModelWrapper, MLP
+from training_functions import train_and_validate, train_svm, train_random_forest, train_decision_tree, train_logistic_regression
 from Helper_functions import FocalLoss, calculate_metrics
 #%% Getting data ready for models
 features_df, classes_df, edgelist_df = readfiles(pc)
@@ -85,6 +86,28 @@ if prototyping == True:
     model_wrapper = ModelWrapper(model, optimizer, criterion)
     #Beginning training
     metrics, best_model_wts = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+# Example 1: Neural network baseline (MLP)
+mlp_model = MLP(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
+print("MLP ready for training in same pipeline as GCN.")
+
+# Example 2: SVM
+svm_model, svm_val_acc = train_svm(data, train_mask, val_mask)
+print(f"SVM validation accuracy: {svm_val_acc:.4f}")
+
+# Example 3: Random Forest
+rf_model, rf_val_acc = train_random_forest(data, train_mask, val_mask)
+print(f"Random Forest validation accuracy: {rf_val_acc:.4f}")
+
+# Example 4: Decision Tree
+dt_model, dt_val_acc = train_decision_tree(data, train_mask, val_mask)
+print(f"Decision Tree validation accuracy: {dt_val_acc:.4f}")
+
+# Example 5: Logistic Regression
+lr_model, lr_val_acc = train_logistic_regression(data, train_mask, val_mask)
+print(f"Logistic Regression validation accuracy: {lr_val_acc:.4f}")
     
 #%% Optuna
 

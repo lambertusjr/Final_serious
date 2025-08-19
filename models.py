@@ -56,6 +56,23 @@ class GIN(nn.Module):
         x = self.fc(x)
         return x
     
+class MLP(nn.Module):
+    def __init__(self, num_node_features, num_classes, hidden_units, dropout=0.5):
+        super(MLP, self).__init__()
+        self.fc1 = nn.Linear(num_node_features, hidden_units)
+        self.fc2 = nn.Linear(hidden_units, hidden_units)
+        self.fc3 = nn.Linear(hidden_units, num_classes)
+        self.dropout = dropout
+
+    def forward(self, data):
+        x = data.x  # only use node features, no graph structure
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.relu(self.fc2(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.fc3(x)
+        return x
+    
 class ModelWrapper:
     def __init__(self, model, optimizer, criterion):
         self.model = model
@@ -78,3 +95,4 @@ class ModelWrapper:
             pred = out.argmax(dim=1)
         metrics = calculate_metrics(data.y[mask].cpu().numpy(), pred[mask].cpu().numpy())
         return loss.item(), metrics
+    
