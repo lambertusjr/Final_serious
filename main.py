@@ -103,13 +103,14 @@ def objective(trial, data, train_perf_eval, val_perf_eval):
     
     model_wrapper = ModelWrapper(model, optimizer, criterion)
     
-    metrics, best_model_wts = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
     
     
-    return metrics['f1_illicit']
+    return best_f1
 
 if parameter_tuning == True:
     import optuna
+import numpy as np
     #criterion = nn.CrossEntropyLoss()
     
     study = optuna.create_study(
@@ -127,28 +128,35 @@ if parameter_tuning == True:
 
 def run_multiple_experiments(model_class, data, train_mask, val_mask, test_mask,
                              criterion, params, num_epochs, num_runs=30):
-    all_results = []
+    all_results = {"val_metrics": [],
+                   "test_metrics": []
+                   }
 
+    device = data.x.device
+    
     for run in range(num_runs):  # ensures reproducibility but still varied across runs
-
+        print(f"Run {run + 1}/{num_runs}")
         model = model_class(
             num_node_features=data.num_features,
             num_classes=2,
             hidden_units=params["hidden_units"]
-        )
+        ).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"])
         wrapper = ModelWrapper(model, optimizer, criterion)
 
-        history = train_and_validate(wrapper, data, train_mask, val_mask, num_epochs)
+        history, best_model_wts, best_f1 = train_and_validate(wrapper, data, train_mask, val_mask, num_epochs)
         # Evaluate on test set at the end
         test_loss, test_metrics = wrapper.evaluate(data, test_mask)
 
-        all_results.append({
-            "val_metrics": history["val_metrics"][-1],
-            "test_metrics": test_metrics
-        })
+        all_results["val_metrics"].append(history["f1_illicit"][-1])
+        all_results["test_metrics"].append(test_metrics)
 
     return all_results
+
+#Moving variables to cuda device
+train_perf_eval = train_perf_eval.to(data.x.device)
+val_perf_eval = val_perf_eval.to(data.x.device)
+test_perf_eval = test_perf_eval.to(data.x.device)
 
 if validation_runs == True:
     all_results = run_multiple_experiments(model_class=GCN,
@@ -160,3 +168,48 @@ if validation_runs == True:
                                            params={"hidden_units": 128, "lr": 0.045},
                                            num_epochs=200,
                                            num_runs=30)
+    
+def summarize_and_visualize_results(all_results):
+    """
+    Summarizes and visualizes the results stored in all_results.
+    Expects all_results to be a dict with keys 'val_metrics' and 'test_metrics'.
+    """
+    import matplotlib.pyplot as plt
+
+    # Convert lists to numpy arrays for easier manipulation
+    val_f1_scores = np.array(all_results["val_metrics"])
+    test_metrics = all_results["test_metrics"]
+
+    # Extract F1, Precision, Recall for test set
+    test_f1 = np.array([m["f1_illicit"] for m in test_metrics])
+    test_precision = np.array([m["precision_illicit"] for m in test_metrics])
+    test_recall = np.array([m["recall_illicit"] for m in test_metrics])
+
+    print("Validation F1: Mean = {:.4f}, Std = {:.4f}".format(val_f1_scores.mean(), val_f1_scores.std()))
+    print("Test F1:        Mean = {:.4f}, Std = {:.4f}".format(test_f1.mean(), test_f1.std()))
+    print("Test Precision: Mean = {:.4f}, Std = {:.4f}".format(test_precision.mean(), test_precision.std()))
+    print("Test Recall:    Mean = {:.4f}, Std = {:.4f}".format(test_recall.mean(), test_recall.std()))
+
+    # Visualization
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 3, 1)
+    plt.boxplot(val_f1_scores)
+    plt.title("Validation F1")
+    plt.ylabel("F1 Score")
+
+    plt.subplot(1, 3, 2)
+    plt.boxplot(test_f1)
+    plt.title("Test F1")
+
+    plt.subplot(1, 3, 3)
+    plt.boxplot([test_precision, test_recall], labels=["Precision", "Recall"])
+    plt.title("Test Precision & Recall")
+
+    plt.tight_layout()
+    plt.show()
+
+    # Example usage after validation runs:
+    # summarize_and_visualize_results(all_results)
+    
+summarize_and_visualize_results(all_results)
+# %%
