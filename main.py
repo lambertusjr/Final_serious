@@ -133,7 +133,7 @@ def objective(trial, data, train_perf_eval, val_perf_eval):
 
 if parameter_tuning == True:
     import optuna
-import numpy as np
+    import numpy as np
     #criterion = nn.CrossEntropyLoss()
     
     study = optuna.create_study(
