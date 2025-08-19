@@ -4,6 +4,11 @@ best_f1 = -1
 best_f1_model_wts = None
 
 """
+import sklearn
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
 
 def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs):
     best_f1 = -1
@@ -38,3 +43,55 @@ def update_best_weights(model, best_f1, current_f1, best_f1_model_wts):
         best_f1 = current_f1
         best_f1_model_wts = copy.deepcopy(model.state_dict())
     return best_f1, best_f1_model_wts
+
+def train_svm(data, train_mask, val_mask, kernel="rbf", C=1.0):
+    X = data.x.cpu().numpy()
+    y = data.y.cpu().numpy()
+
+    X_train, y_train = X[train_mask.cpu().numpy()], y[train_mask.cpu().numpy()]
+    X_val, y_val = X[val_mask.cpu().numpy()], y[val_mask.cpu().numpy()]
+
+    model = SVC(kernel=kernel, C=C, probability=True)
+    model.fit(X_train, y_train)
+
+    val_score = model.score(X_val, y_val)
+    return model, val_score
+
+def train_random_forest(data, train_mask, val_mask, n_estimators=100, max_depth=None):
+    X = data.x.cpu().numpy()
+    y = data.y.cpu().numpy()
+
+    X_train, y_train = X[train_mask.cpu().numpy()], y[train_mask.cpu().numpy()]
+    X_val, y_val = X[val_mask.cpu().numpy()], y[val_mask.cpu().numpy()]
+
+    model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
+    model.fit(X_train, y_train)
+
+    val_score = model.score(X_val, y_val)
+    return model, val_score
+
+def train_decision_tree(data, train_mask, val_mask, max_depth=None):
+    X = data.x.cpu().numpy()
+    y = data.y.cpu().numpy()
+
+    X_train, y_train = X[train_mask.cpu().numpy()], y[train_mask.cpu().numpy()]
+    X_val, y_val = X[val_mask.cpu().numpy()], y[val_mask.cpu().numpy()]
+
+    model = DecisionTreeClassifier(max_depth=max_depth, random_state=42)
+    model.fit(X_train, y_train)
+
+    val_score = model.score(X_val, y_val)
+    return model, val_score
+
+def train_logistic_regression(data, train_mask, val_mask):
+    X = data.x.cpu().numpy()
+    y = data.y.cpu().numpy()
+
+    X_train, y_train = X[train_mask.cpu().numpy()], y[train_mask.cpu().numpy()]
+    X_val, y_val = X[val_mask.cpu().numpy()], y[val_mask.cpu().numpy()]
+
+    model = LogisticRegression(max_iter=500)
+    model.fit(X_train, y_train)
+
+    val_score = model.score(X_val, y_val)
+    return model, val_score
