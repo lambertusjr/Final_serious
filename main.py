@@ -89,25 +89,7 @@ if prototyping == True:
     
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# Example 1: Neural network baseline (MLP)
-mlp_model = MLP(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
-print("MLP ready for training in same pipeline as GCN.")
 
-# Example 2: SVM
-svm_model, svm_val_acc = train_svm(data, train_mask, val_mask)
-print(f"SVM validation accuracy: {svm_val_acc:.4f}")
-
-# Example 3: Random Forest
-rf_model, rf_val_acc = train_random_forest(data, train_mask, val_mask)
-print(f"Random Forest validation accuracy: {rf_val_acc:.4f}")
-
-# Example 4: Decision Tree
-dt_model, dt_val_acc = train_decision_tree(data, train_mask, val_mask)
-print(f"Decision Tree validation accuracy: {dt_val_acc:.4f}")
-
-# Example 5: Logistic Regression
-lr_model, lr_val_acc = train_logistic_regression(data, train_mask, val_mask)
-print(f"Logistic Regression validation accuracy: {lr_val_acc:.4f}")
     
 #%% Optuna
 
