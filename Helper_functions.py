@@ -1,8 +1,9 @@
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
+import numpy as np
 
 def calculate_metrics(y_true, y_pred):
-    precision_score_weighted = precision_score(y_true, y_pred, average='weighted')
-    precision_score_illicit = precision_score(y_true, y_pred, pos_label=0, average='binary')
+    precision_score_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
+    precision_score_illicit = precision_score(y_true, y_pred, pos_label=0, average='binary', zero_division=0)
     
     recall_score_weighted = recall_score(y_true, y_pred, average='weighted')
     recall_score_illicit = recall_score(y_true, y_pred, pos_label=0, average='binary')

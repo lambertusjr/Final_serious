@@ -2,11 +2,14 @@
 #notes:
 
 
-seeded_run = False
+seeded_run = True
 prototyping = False
-MLP_prototype = True
+MLP_prototype = False
+svm_prototype = False
+XGB_prototype = False
+RF_prototype = True
 parameter_tuning = False
-validation_runs = True
+validation_runs = False
 num_epochs = 200
 #%% Setup
 # Detecting system
@@ -56,7 +59,7 @@ from Reading_files import readfiles
 from pre_processing import elliptic_pre_processing, create_data_object, create_elliptic_masks
 from debugging import print_tensor_info
 from models import GCN, ModelWrapper, MLP
-from training_functions import train_and_validate, train_svm, train_random_forest, train_decision_tree, train_logistic_regression
+from training_functions import train_and_validate
 from Helper_functions import FocalLoss, calculate_metrics
 #%% Getting data ready for models
 features_df, classes_df, edgelist_df = readfiles(pc)
@@ -89,7 +92,37 @@ if prototyping == True:
     
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+if MLP_prototype == True:
+    model = MLP(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.05, weight_decay=5e-4)
+    criterion = nn.CrossEntropyLoss()
+    model_wrapper = ModelWrapper(model, optimizer, criterion)
+    
+    data = data.to(device)
+    train_perf_eval = train_perf_eval.to(device)
+    val_perf_eval = val_perf_eval.to(device)
+    metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
 
+if svm_prototype == True: #Toets ander kernel functions, regularisation parameters en gamma values
+    from sklearn import svm
+    clf = svm.SVC(kernel='linear', C=1.0)
+    clf.fit(data.x[train_perf_eval], data.y[train_perf_eval])
+    y_pred = clf.predict(data.x[val_perf_eval])
+    val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
+    
+if XGB_prototype == True:
+    from xgboost import XGBClassifier
+    xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', scale_pos_weight=9.25, learning_rate=0.1, max_depth=6, n_estimators=100, colsample_bytree=0.7)
+    xgb_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+    y_pred = xgb_model.predict(data.x[val_perf_eval].cpu().numpy())
+    val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
+    
+if RF_prototype == True:
+    from sklearn.ensemble import RandomForestClassifier
+    rf_model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+    rf_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+    y_pred = rf_model.predict(data.x[val_perf_eval].cpu().numpy())
+    val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
     
 #%% Optuna
 
@@ -122,8 +155,7 @@ if parameter_tuning == True:
         direction="maximize",
         study_name="GCN Hyperparameter Optimization",
         storage="sqlite:///db.sqlite3",
-        load_if_exists=True
-        )
+        load_if_exists=True)
     
     study.optimize(lambda trial: objective(trial, data, train_perf_eval, val_perf_eval), n_trials=200)
     print("Best hyperparameters:", study.best_params)
@@ -216,5 +248,6 @@ def summarize_and_visualize_results(all_results):
     # Example usage after validation runs:
     # summarize_and_visualize_results(all_results)
     
-summarize_and_visualize_results(all_results)
-# %%
+#summarize_and_visualize_results(all_results)
+# %%Final parameter optimisation and testing code
+
