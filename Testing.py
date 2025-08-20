@@ -18,7 +18,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
     
     if model == 'MLP':
         from models import MLP
-        model_instance = MLP(num_node_features=data.num_node_features, num_classes=data.num_classes, hidden_units=hidden_units)
+        model_instance = MLP(num_node_features=data.num_node_features, num_classes=2, hidden_units=hidden_units)
     elif model == 'SVM':
         from sklearn.svm import SVC
         kernel = trial.suggest_categorical('kernel', ['linear', 'rbf'])
@@ -168,6 +168,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
             
             #Begin the validation phase
             for run in range(30):
+                    #Fix model wrapper definition in train_and_test function. Define seperately first
                     test_metrics, best_f1 = train_and_test(model_wrapper=ModelWrapper(model_name, study.best_params), 
                                                    data=data, 
                                                    train_perf_eval=train_perf_eval, 
