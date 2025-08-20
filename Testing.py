@@ -3,16 +3,10 @@ import numpy as np
 from models import MLP, GCN, GAT, GIN, ModelWrapper
 import torch
 from Helper_functions import FocalLoss, calculate_metrics
+from training_functions import train_and_validate, train_and_test
 
 models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
-model_parameters = {
-    'MLP': [],
-    'SVM': [],
-    'XGB': [],
-    'RF': [],
-    'GCN': [],
-    'GAT': [],
-    'GIN': []}
+
 
 def objective(trial, model, data, train_perf_eval, val_perf_eval):
     hidden_units = trial.suggest_int('hidden_units', 32, 256)
@@ -67,11 +61,102 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
     
     model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
     
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model_wrapper.model.to(device)
+    data = data.to(device)
+    train_perf_eval = train_perf_eval.to(device)
+    val_perf_eval = val_perf_eval.to(device)
     
+    wrapper_models = ['MLP', 'GCN', 'GAT', 'GIN'] # models that use ModelWrapper
     
+    if model in wrapper_models:
+        metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs=200)
+        return best_f1
+    elif model == 'SVM':
+        model_instance.fit(data.x[train_perf_eval], data.y[train_perf_eval])
+        pred = model_instance.predict(data.x[val_perf_eval])
+        metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), pred)
+        return metrics['f1_illicit']
+    elif model == 'XGB':
+        model_instance.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+        pred = model_instance.predict(data.x[val_perf_eval].cpu().numpy())
+        metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), pred)
+        return metrics['f1_illicit']
+    elif model == 'RF':
+        model_instance.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+        pred = model_instance.predict(data.x[val_perf_eval].cpu().numpy())
+        metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), pred)
+        return metrics['f1_illicit']
     
+
     
-def run_optimization(models, data, train_perf_eval, val_perf_eval):
+def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eval):
+    model_parameters = {
+        'MLP': [],
+        'SVM': [],
+        'XGB': [],
+        'RF': [],
+        'GCN': [],
+        'GAT': [],
+        'GIN': []}
+    testing_results = {
+        'MLP': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        },
+        'SVM': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        },
+        'XGB': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        },
+        'RF': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        },
+        'GCN': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        },
+        'GAT': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        },
+        'GIN': {
+            'precision_weighted': [],
+            'precision_illicit': [],
+            'recall_weighted': [],
+            'recall_illicit': [],
+            'f1_weighted': [],
+            'f1_illicit': []
+        }
+    }
     for model_name in models:
             study = optuna.create_study(direction='maximize',
                                 study_name= f'{model_name}_optimization',
@@ -80,3 +165,24 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval):
             study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=200)
             print(f"Best hyperparameters for {model_name}:", study.best_params)
             model_parameters[model_name].append(study.best_params)
+            
+            #Begin the validation phase
+            for run in range(30):
+                    test_metrics, best_f1 = train_and_test(model_wrapper=ModelWrapper(model_name, study.best_params), 
+                                                   data=data, 
+                                                   train_perf_eval=train_perf_eval, 
+                                                   val_perf_eval=val_perf_eval, 
+                                                   test_perf_eval=test_perf_eval)
+            
+                    testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
+                    testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
+                    testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
+                    testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
+                    testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
+                    testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+    return model_parameters, testing_results
+            #need to start writing introduction
+            #Start with excel sheet on places to publish paper
+            
+            
+            

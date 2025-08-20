@@ -4,11 +4,14 @@ best_f1 = -1
 best_f1_model_wts = None
 
 """
+import torch
 import sklearn
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
+
+from models import ModelWrapper
 
 def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs):
     best_f1 = -1
@@ -44,3 +47,20 @@ def update_best_weights(model, best_f1, current_f1, best_f1_model_wts):
         best_f1_model_wts = copy.deepcopy(model.state_dict())
     return best_f1, best_f1_model_wts
 
+def train_and_test(model_wrapper, data, train_perf_eval, val_perf_eval, test_perf_eval, num_epochs=200):
+    
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model_wrapper.model.to(device)
+    data = data.to(device)
+    #Use training and validation data to train the model
+    train_perf_eval = train_perf_eval.to(device)
+    val_perf_eval = val_perf_eval.to(device)
+    test_perf_eval = test_perf_eval.to(device)
+    
+    metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    
+    model_wrapper.model.load_state_dict(best_model_wts)
+    test_loss, test_metrics = model_wrapper.evaluate(data, test_perf_eval)
+    
+    return test_metrics, best_f1
+    

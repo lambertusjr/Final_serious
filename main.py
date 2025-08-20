@@ -10,6 +10,7 @@ XGB_prototype = False
 RF_prototype = True
 parameter_tuning = False
 validation_runs = False
+Full_run = True
 num_epochs = 200
 #%% Setup
 # Detecting system
@@ -250,4 +251,12 @@ def summarize_and_visualize_results(all_results):
     
 #summarize_and_visualize_results(all_results)
 # %%Final parameter optimisation and testing code
-
+if Full_run == True:
+    from Testing import run_optimization
+    model_parameters, testing_results = run_optimization(
+                                                models=['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN'],
+                                                data=data,
+                                                train_perf_eval=train_perf_eval,
+                                                val_perf_eval=val_perf_eval,
+                                                test_perf_eval=test_perf_eval
+                                                )
