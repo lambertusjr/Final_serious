@@ -27,7 +27,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
         model_instance = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree)
     elif model == 'XGB':
         from xgboost import XGBClassifier
-        max_depth = trial.suggest_int('max_depth', 3, 10)
+        max_depth = trial.suggest_int('max_depth', 5, 15)
         Gamma_XGB = trial.suggest_float('Gamma_XGB', 0, 5)
         n_estimators = trial.suggest_int('n_estimators', 50, 500, step=50)
         model_instance = XGBClassifier(
@@ -43,7 +43,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
     elif model == 'RF':
         from sklearn.ensemble import RandomForestClassifier
         n_estimators = trial.suggest_int('n_estimators', 50, 500, step=50)
-        max_depth = trial.suggest_int('max_depth', 5, 20)
+        max_depth = trial.suggest_int('max_depth', 5, 15)
         model_instance = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
     elif model == 'GCN':
         from models import GCN
@@ -89,8 +89,10 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
         return metrics['f1_illicit']
     
 
-    
+from training_functions import train_and_test_NMW_models
+
 def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eval):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model_parameters = {
         'MLP': [],
         'SVM': [],
@@ -165,10 +167,107 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
             study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=200)
             print(f"Best hyperparameters for {model_name}:", study.best_params)
             model_parameters[model_name].append(study.best_params)
+            #Assign hyperparameters to model for testing
+            params_for_model = study.best_params
             
+            hidden_units = params_for_model.get("hidden_units", 64)
+            learning_rate = params_for_model.get("learning_rate", 0.045)
+            weight_decay = params_for_model.get("weight_decay", 0.0001)
+            alpha = params_for_model.get("alpha", 0.5)
+            gamma_focal = params_for_model.get("gamma_focal", 2.0)
+            
+            #Finish fixing the testing section of full run. Need to make sure testing is done correctly for all models
+            match model_name:
+                case "MLP":
+                    MLP_model = MLP(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to(device)
+                    optimizer = torch.optim.Adam(MLP_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+                    criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                    model_wrapper = ModelWrapper(model= MLP_model, optimizer= optimizer, criterion= criterion)
+                    
+                    test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
+                                                           data=data,
+                                                           train_perf_eval=train_perf_eval,
+                                                           val_perf_eval=val_perf_eval,
+                                                           test_perf_eval=test_perf_eval)
+                    testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
+                    testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
+                    testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
+                    testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
+                    testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
+                    testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+                    pass
+                case "SVM" | "RF" | "XGB":
+                    metrics = train_and_test_NMW_models(model_name=model_name,
+                                                        data=data,
+                                                        train_perf_eval=train_perf_eval,
+                                                        val_perf_eval=val_perf_eval,
+                                                        test_perf_eval=test_perf_eval)
+                    testing_results[model_name]['precision_weighted'].append(metrics['precision_weighted'])
+                    testing_results[model_name]['precision_illicit'].append(metrics['precision_illicit'])
+                    testing_results[model_name]['recall_weighted'].append(metrics['recall_weighted'])
+                    testing_results[model_name]['recall_illicit'].append(metrics['recall_illicit'])
+                    testing_results[model_name]['f1_weighted'].append(metrics['f1_weighted'])
+                    testing_results[model_name]['f1_illicit'].append(metrics['f1_illicit'])
+                    pass
+                case "GCN":
+                    GCN_model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to(device)
+                    optimizer = torch.optim.Adam(GCN_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+                    criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                    model_wrapper = ModelWrapper(model=GCN_model, optimizer=optimizer, criterion=criterion)
+                    
+                    test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
+                                                           data=data,
+                                                           train_perf_eval=train_perf_eval,
+                                                           val_perf_eval=val_perf_eval,
+                                                           test_perf_eval=test_perf_eval)
+                    testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
+                    testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
+                    testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
+                    testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
+                    testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
+                    testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+                    pass
+                case "GAT":
+                    num_heads = params_for_model.get("num_heads", 4)
+                    GAT_model = GAT(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units, num_heads=num_heads).to(device)
+                    optimizer = torch.optim.Adam(GAT_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+                    criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                    model_wrapper = ModelWrapper(model=GAT_model, optimizer=optimizer, criterion=criterion)
+
+                    test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
+                                                           data=data,
+                                                           train_perf_eval=train_perf_eval,
+                                                           val_perf_eval=val_perf_eval,
+                                                           test_perf_eval=test_perf_eval)
+                    testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
+                    testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
+                    testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
+                    testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
+                    testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
+                    testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+                    pass
+                case "GIN":
+                    GIN_model = GIN(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to(device)
+                    optimizer = torch.optim.Adam(GIN_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+                    criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                    model_wrapper = ModelWrapper(model=GIN_model, optimizer=optimizer, criterion=criterion)
+                    
+                    test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
+                                                           data=data,
+                                                           train_perf_eval=train_perf_eval,
+                                                           val_perf_eval=val_perf_eval,
+                                                           test_perf_eval=test_perf_eval)
+                    testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
+                    testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
+                    testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
+                    testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
+                    testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
+                    testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+
             #Begin the validation phase
             for run in range(30):
                     #Fix model wrapper definition in train_and_test function. Define seperately first
+                    
                     test_metrics, best_f1 = train_and_test(model_wrapper=ModelWrapper(model_name, study.best_params), 
                                                    data=data, 
                                                    train_perf_eval=train_perf_eval, 

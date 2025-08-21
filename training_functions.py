@@ -10,8 +10,8 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
-
-from models import ModelWrapper
+from Helper_functions import calculate_metrics
+from models import ModelWrapper, MLP
 
 def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs):
     best_f1 = -1
@@ -63,4 +63,35 @@ def train_and_test(model_wrapper, data, train_perf_eval, val_perf_eval, test_per
     test_loss, test_metrics = model_wrapper.evaluate(data, test_perf_eval)
     
     return test_metrics, best_f1
-    
+
+def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, test_perf_eval, params_for_model):
+    match model_name:
+        case "SVM":
+            C = params_for_model.get("C", 1.0)
+            degree = params_for_model.get("degree", 3)
+            kernel = params_for_model.get("kernel", 'rbf')
+            svm_model = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree)
+            train_perf_eval = train_perf_eval | val_perf_eval #Combining to increase available training data
+            svm_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+            pred = svm_model.predict(data.x[test_perf_eval].cpu().numpy())
+            metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
+            return metrics
+        case "RF":
+            n_estimators = params_for_model.get("n_estimators", 100)
+            max_depth = params_for_model.get("max_depth", 10)
+            rf_model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, class_weight='balanced')
+            train_perf_eval = train_perf_eval | val_perf_eval #Combining to increase available training data
+            rf_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+            pred = rf_model.predict(data.x[test_perf_eval].cpu().numpy())
+            metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
+            return metrics
+        case "XGB":
+            from xgboost import XGBClassifier
+            max_depth = params_for_model.get("max_depth", 10)
+            n_estimators = params_for_model.get("n_estimators", 100)
+            xgb_model = XGBClassifier(max_depth=max_depth, n_estimators=n_estimators, scale_pos_weight=9.25)
+            train_perf_eval = train_perf_eval | val_perf_eval #Combining to increase available training data
+            xgb_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+            pred = xgb_model.predict(data.x[test_perf_eval].cpu().numpy())
+            metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
+            return metrics
