@@ -57,8 +57,9 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
         model_instance = GIN(num_node_features=data.num_node_features, num_classes=data.num_classes, hidden_units=hidden_units)
     
     criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
-    optimizer = torch.optim.Adam(model_instance.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    
+    if model == "GAT" or model == "GCN" or model == "GIN" or model == "MLP":
+        optimizer = torch.optim.Adam(model_instance.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
     model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
