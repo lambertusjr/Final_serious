@@ -35,9 +35,9 @@ def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_
         metrics['recall_illicit'].append(val_metrics['recall_illicit'])
         metrics['f1_weighted'].append(val_metrics['f1_weighted'])
         metrics['f1_illicit'].append(val_metrics['f1_illicit'])
-        
-        best_f1, best_model_wts = update_best_weights(model_wrapper.model, best_f1, val_metrics['f1_illicit'], best_f1_model_wts)
-    return metrics, best_model_wts, best_f1
+
+        best_f1, best_f1_model_wts = update_best_weights(model_wrapper.model, best_f1, val_metrics['f1_illicit'], best_f1_model_wts)
+    return metrics, best_f1_model_wts, best_f1
 import copy
 def update_best_weights(model, best_f1, current_f1, best_f1_model_wts):
     if current_f1 > best_f1:
