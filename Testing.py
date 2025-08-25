@@ -4,7 +4,7 @@ from models import MLP, GCN, GAT, GIN, ModelWrapper
 import torch
 from Helper_functions import FocalLoss, calculate_metrics
 from training_functions import train_and_validate, train_and_test
-
+import torch
 models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
 
 
@@ -164,7 +164,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                 study_name= f'{model_name}_optimization',
                                 storage='sqlite:///optimization_results.db',
                                 load_if_exists=True)
-            study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=200)
+            study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=1)
             print(f"Best hyperparameters for {model_name}:", study.best_params)
             model_parameters[model_name].append(study.best_params)
             #Assign hyperparameters to model for testing
@@ -257,23 +257,6 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                            train_perf_eval=train_perf_eval,
                                                            val_perf_eval=val_perf_eval,
                                                            test_perf_eval=test_perf_eval)
-                    testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
-                    testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
-                    testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
-                    testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
-                    testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
-                    testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
-
-            #Begin the validation phase
-            for run in range(30):
-                    #Fix model wrapper definition in train_and_test function. Define seperately first
-                    
-                    test_metrics, best_f1 = train_and_test(model_wrapper=ModelWrapper(model_name, study.best_params), 
-                                                   data=data, 
-                                                   train_perf_eval=train_perf_eval, 
-                                                   val_perf_eval=val_perf_eval, 
-                                                   test_perf_eval=test_perf_eval)
-            
                     testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
