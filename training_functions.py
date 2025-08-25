@@ -13,9 +13,7 @@ from sklearn.linear_model import LogisticRegression
 from Helper_functions import calculate_metrics
 from models import ModelWrapper, MLP
 
-def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs):
-    best_f1 = -1
-    best_f1_model_wts = None
+def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs, best_f1 = -1, best_f1_model_wts = None):
     metrics = {
         'precision_weighted': [],
         'precision_illicit': [],
