@@ -22,7 +22,7 @@ if pc == 'Darwin':
     os.chdir("/Users/lambertusvanzyl/Desktop/Final_serious")
 else:
     os.chdir("/Users/Lambertus/Desktop/Final_serious")
-    
+
 #Setting seed
 import torch
 import numpy as np

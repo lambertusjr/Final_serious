@@ -48,15 +48,15 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
         model_instance = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
     elif model == 'GCN':
         from models import GCN
-        model_instance = GCN(num_node_features=data.num_node_features, num_classes=data.num_classes, hidden_units=hidden_units)
+        model_instance = GCN(num_node_features=data.num_node_features, num_classes=2, hidden_units=hidden_units)
     elif model == 'GAT':
         from models import GAT
         num_heads = trial.suggest_int('num_heads', 1, 8)
-        model_instance = GAT(num_node_features=data.num_node_features, num_classes=data.num_classes, hidden_units=hidden_units, num_heads=num_heads)
+        model_instance = GAT(num_node_features=data.num_node_features, num_classes=2, hidden_units=hidden_units, num_heads=num_heads)
     elif model == 'GIN':
         from models import GIN
-        model_instance = GIN(num_node_features=data.num_node_features, num_classes=data.num_classes, hidden_units=hidden_units)
-    
+        model_instance = GIN(num_node_features=data.num_node_features, num_classes=2, hidden_units=hidden_units)
+
     wrapper_models = ['MLP', 'GCN', 'GAT', 'GIN'] # models that use ModelWrapper
     criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
     if model in wrapper_models:
@@ -73,8 +73,8 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
         metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs=200)
         return best_f1
     elif model == 'SVM':
-        model_instance.fit(data.x[train_perf_eval], data.y[train_perf_eval])
-        pred = model_instance.predict(data.x[val_perf_eval])
+        model_instance.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+        pred = model_instance.predict(data.x[val_perf_eval].cpu().numpy())
         metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), pred)
         return metrics['f1_illicit']
     elif model == 'XGB':
@@ -164,7 +164,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                 study_name= f'{model_name}_optimization',
                                 storage='sqlite:///optimization_results.db',
                                 load_if_exists=True)
-            study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=1)
+            study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=200)
             print(f"Best hyperparameters for {model_name}:", study.best_params)
             model_parameters[model_name].append(study.best_params)
             #Assign hyperparameters to model for testing
@@ -201,7 +201,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                         data=data,
                                                         train_perf_eval=train_perf_eval,
                                                         val_perf_eval=val_perf_eval,
-                                                        test_perf_eval=test_perf_eval)
+                                                        test_perf_eval=test_perf_eval,
+                                                        params_for_model=params_for_model)
                     testing_results[model_name]['precision_weighted'].append(metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(metrics['recall_weighted'])
@@ -263,6 +264,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                     testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
                     testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
                     testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+                    pass
     return model_parameters, testing_results
             #need to start writing introduction
             #Start with excel sheet on places to publish paper
