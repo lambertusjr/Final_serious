@@ -9,6 +9,7 @@ models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
 
 
 def objective(trial, model, data, train_perf_eval, val_perf_eval):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     hidden_units = trial.suggest_int('hidden_units', 32, 256)
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-2, log=True)
@@ -56,19 +57,17 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval):
         from models import GIN
         model_instance = GIN(num_node_features=data.num_node_features, num_classes=data.num_classes, hidden_units=hidden_units)
     
+    wrapper_models = ['MLP', 'GCN', 'GAT', 'GIN'] # models that use ModelWrapper
     criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
-    if model == "GAT" or model == "GCN" or model == "GIN" or model == "MLP":
+    if model in wrapper_models:
         optimizer = torch.optim.Adam(model_instance.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
+        model_wrapper.model.to(device)
 
-    model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
-    
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model_wrapper.model.to(device)
     data = data.to(device)
     train_perf_eval = train_perf_eval.to(device)
     val_perf_eval = val_perf_eval.to(device)
     
-    wrapper_models = ['MLP', 'GCN', 'GAT', 'GIN'] # models that use ModelWrapper
     
     if model in wrapper_models:
         metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs=200)
