@@ -1,5 +1,8 @@
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
 import numpy as np
+import torch
+import gc
+from contextlib import contextmanager
 
 def calculate_metrics(y_true, y_pred):
     precision_score_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
@@ -55,3 +58,44 @@ class FocalLoss(nn.Module):
         elif self.reduction == 'sum':
             return focal_loss.sum()
         return focal_loss
+    
+@contextmanager
+def inference_mode_if_needed(model_name: str):
+    """
+    Context manager that disables gradient tracking if the model is CPU-based
+    or if we are in evaluation mode.
+    """
+    if model_name in ["SVM", "XGB", "RF"]:
+        with torch.no_grad():
+            yield
+    else:
+        yield
+
+def run_trial_with_cleanup(trial_func, model_name, *args, **kwargs):
+    """
+    Runs a trial function safely with:
+      - Automatic no_grad() for CPU-based models.
+      - GPU/CPU memory cleanup after each trial.
+    
+    Parameters
+    ----------
+    trial_func : callable
+        The trial function to run (e.g., objective).
+    model_name : str
+        Name of the model (MLP, SVM, XGB, RF, GCN, GAT, GIN).
+    *args, **kwargs :
+        Arguments to pass to trial_func.
+        
+    Returns
+    -------
+    result : Any
+        The return value of the trial function.
+    """
+    try:
+        with inference_mode_if_needed(model_name):
+            result = trial_func(*args, **kwargs)
+        return result
+    finally:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()

@@ -2,8 +2,9 @@ import optuna
 import numpy as np
 from models import MLP, GCN, GAT, GIN, ModelWrapper
 import torch
-from Helper_functions import FocalLoss, calculate_metrics
+from Helper_functions import FocalLoss, calculate_metrics, run_trial_with_cleanup
 from training_functions import train_and_validate, train_and_test
+
 import torch
 models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
 
@@ -164,7 +165,13 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                 study_name= f'{model_name}_optimization',
                                 storage='sqlite:///optimization_results.db',
                                 load_if_exists=True)
-            study.optimize(lambda trial: objective(trial, model_name, data, train_perf_eval, val_perf_eval), n_trials=200)
+            study.optimize(
+                lambda trial: run_trial_with_cleanup(
+                    objective, model_name, trial, model_name, data, train_perf_eval, val_perf_eval
+                ),
+                n_trials=200
+            )
+
             print(f"Best hyperparameters for {model_name}:", study.best_params)
             model_parameters[model_name].append(study.best_params)
             #Assign hyperparameters to model for testing
