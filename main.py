@@ -251,8 +251,10 @@ def summarize_and_visualize_results(all_results):
     
 #summarize_and_visualize_results(all_results)
 # %%Final parameter optimisation and testing code
+
 if Full_run == True:
     from Testing import run_optimization
+
     model_parameters, testing_results = run_optimization(
                                                 models=['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN'],
                                                 data=data,
@@ -260,3 +262,16 @@ if Full_run == True:
                                                 val_perf_eval=val_perf_eval,
                                                 test_perf_eval=test_perf_eval
                                                 )
+    
+    # Save model_parameters and testing_results to an Excel file
+
+    # Convert model_parameters and testing_results to DataFrames
+    model_params_df = pd.DataFrame([model_parameters]) if isinstance(model_parameters, dict) else pd.DataFrame(model_parameters)
+    testing_results_df = pd.DataFrame([testing_results]) if isinstance(testing_results, dict) else pd.DataFrame(testing_results)
+
+    output_path = "final_results.xlsx"
+    with pd.ExcelWriter(output_path) as writer:
+        model_params_df.to_excel(writer, sheet_name="Model_Parameters", index=False)
+        testing_results_df.to_excel(writer, sheet_name="Testing_Results", index=False)
+
+    print(f"Results saved to {output_path}")
