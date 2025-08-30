@@ -62,6 +62,7 @@ from debugging import print_tensor_info
 from models import GCN, ModelWrapper, MLP
 from training_functions import train_and_validate
 from Helper_functions import FocalLoss, calculate_metrics
+from analysis import results_to_long_df, summarise_long_df, formatted_wide_table, produce_tables, boxplots_by_metric, bar_means_with_ci
 #%% Getting data ready for models
 features_df, classes_df, edgelist_df = readfiles(pc)
 features_df, classes_df, edgelist_df, known_nodes = elliptic_pre_processing(features_df, classes_df, edgelist_df)
@@ -263,15 +264,9 @@ if Full_run == True:
                                                 test_perf_eval=test_perf_eval
                                                 )
     
-    # Save model_parameters and testing_results to an Excel file
-
-    # Convert model_parameters and testing_results to DataFrames
-    model_params_df = pd.DataFrame([model_parameters]) if isinstance(model_parameters, dict) else pd.DataFrame(model_parameters)
-    testing_results_df = pd.DataFrame([testing_results]) if isinstance(testing_results, dict) else pd.DataFrame(testing_results)
-
-    output_path = "final_results.xlsx"
-    with pd.ExcelWriter(output_path) as writer:
-        model_params_df.to_excel(writer, sheet_name="Model_Parameters", index=False)
-        testing_results_df.to_excel(writer, sheet_name="Testing_Results", index=False)
-
-    print(f"Results saved to {output_path}")
+#%% Analysing results
+df_long, df_summary, df_wide = produce_tables(testing_results)
+#Boxplots by metric
+boxplots_by_metric(df_long)
+# Bar means with CI
+bar_means_with_ci(df_summary, metric="f1_illicit")
