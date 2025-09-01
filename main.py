@@ -263,7 +263,22 @@ if Full_run == True:
                                                 val_perf_eval=val_perf_eval,
                                                 test_perf_eval=test_perf_eval
                                                 )
+
+#Save results from optimization
+import pickle
+
+def save_testing_results_pickle(results, path="testing_results.pkl"):
+    with open(path, 'wb') as f:
+        pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
+        
+save_testing_results_pickle(testing_results, "testing_results.pkl")
+
+#%% Loading in saved results
+def load_testing_results_pickle(path="testing_results.pkl"):
+    with open(path, "rb") as f:
+        return pickle.load(f)
     
+testing_results = load_testing_results_pickle("testing_results.pkl")
 #%% Analysing results
 df_long, df_summary, df_wide = produce_tables(testing_results)
 #Boxplots by metric
