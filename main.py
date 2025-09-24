@@ -304,7 +304,7 @@ encoder.train()
 head.train()
 for epoch in range(200):
     optimizer.zero_grad()
-    z = encoder(data[train_mask])                                # [N, embedding_dim]
+    z = encoder(data)                                # [N, embedding_dim]
     logits = head(z)                                 # [N, 2]
     loss = criterion(logits[train_perf_eval], data.y[train_perf_eval])
     loss.backward()
@@ -358,4 +358,23 @@ val_metrics = calculate_metrics(y_val, val_pred)
 test_pred = xgb_model.predict(x_test)
 test_metrics = calculate_metrics(y_test, test_pred)
 
-# %%
+# %% LSTM temporary pipeline
+
+from LSTM_pipeline import run_lstm_embeddings_xgb
+
+result = run_lstm_embeddings_xgb(
+    features_df=features_df,
+    data=data,
+    train_perf_eval=train_perf_eval,
+    val_perf_eval=val_perf_eval,
+    test_perf_eval=test_perf_eval,
+    T=49,
+    lstm_hidden_dim=128,
+    projection_dim=256,
+    warmstart_epochs=20,          # set 0 to skip
+    xgb_params={"tree_method": "hist"}  # use 'gpu_hist' if available
+)
+
+print("VAL:", result["val_metrics"])
+print("TEST:", result["test_metrics"])
+# embeddings available as result["embeddings"]
