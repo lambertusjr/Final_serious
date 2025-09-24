@@ -96,3 +96,51 @@ class ModelWrapper:
         metrics = calculate_metrics(data.y[mask].cpu().numpy(), pred[mask].cpu().numpy())
         return loss.item(), metrics
     
+#%% New models
+# torch>=2.0, torch-geometric>=2.4
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GINConv, BatchNorm
+
+class GINEncoder(nn.Module):
+    def __init__(self, num_node_features, hidden_units, embedding_dim, dropout=0.2):
+        super(GINEncoder, self).__init__()
+        nn1 = nn.Sequential(
+            nn.Linear(num_node_features, hidden_units),
+            nn.ReLU(),
+            nn.Linear(hidden_units, hidden_units)
+        )
+        self.conv1 = GINConv(nn1, train_eps=False)
+        self.bn1 = BatchNorm(hidden_units)
+
+        nn2 = nn.Sequential(
+            nn.Linear(hidden_units, hidden_units),
+            nn.ReLU(),
+            nn.Linear(hidden_units, hidden_units)
+        )
+        self.conv2 = GINConv(nn2, train_eps=False)
+        self.bn2 = BatchNorm(hidden_units)
+
+        self.projection = nn.Linear(hidden_units, embedding_dim)
+        self.dropout = dropout
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        x = self.conv1(x, edge_index)
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+
+        x = self.conv2(x, edge_index)
+        x = self.bn2(x)
+        x = F.relu(x)
+
+        x = self.projection(x)
+        x = F.normalize(x, p=2, dim=-1)
+        return x
+
+    @torch.no_grad()
+    def embed(self, data):
+        self.eval()
+        return self.forward(data)

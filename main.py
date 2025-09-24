@@ -10,7 +10,7 @@ XGB_prototype = False
 RF_prototype = False
 parameter_tuning = False
 validation_runs = False
-Full_run = True
+Full_run = False
 num_epochs = 200
 #%% Setup
 # Detecting system
@@ -285,3 +285,77 @@ df_long, df_summary, df_wide = produce_tables(testing_results)
 boxplots_by_metric(df_long)
 # Bar means with CI
 bar_means_with_ci(df_summary, metric="f1_illicit")
+
+#%% Train encoder
+from models import GINEncoder
+
+embedding_dim = 256
+encoder = GINEncoder(
+    num_node_features=data.num_features,   
+    hidden_units=128, 
+    embedding_dim=embedding_dim
+    ).to(data.x.device)
+
+head = nn.Linear(embedding_dim, 2).to(data.x.device)
+optimizer = torch.optim.Adam(list(encoder.parameters()) + list(head.parameters()), lr=0.05, weight_decay=5e-4)
+criterion = FocalLoss(alpha=0.5, gamma=2.5, reduction='mean')
+
+encoder.train()
+head.train()
+for epoch in range(200):
+    optimizer.zero_grad()
+    z = encoder(data[train_mask])                                # [N, embedding_dim]
+    logits = head(z)                                 # [N, 2]
+    loss = criterion(logits[train_perf_eval], data.y[train_perf_eval])
+    loss.backward()
+    optimizer.step()
+
+    with torch.no_grad():
+        encoder.eval(); head.eval()
+        val_logits = head(encoder(data))
+        val_pred = val_logits[val_perf_eval].argmax(dim=-1)
+        val_metrics = calculate_metrics(
+            data.y[val_perf_eval].cpu().numpy(),
+            val_pred.cpu().numpy()
+        )
+    encoder.train(); head.train()
+    
+
+
+
+#%% Generate embeddings
+encoder.eval()
+with torch.no_grad():
+    node_embeddings = encoder.embed(data)            # [N, embedding_dim]
+
+x_train = node_embeddings[train_perf_eval].cpu().numpy()
+y_train = data.y[train_perf_eval].cpu().numpy()
+x_val   = node_embeddings[val_perf_eval].cpu().numpy()
+y_val   = data.y[val_perf_eval].cpu().numpy()
+x_test  = node_embeddings[test_perf_eval].cpu().numpy()
+y_test  = data.y[test_perf_eval].cpu().numpy()
+
+#%% Fit XGBoost
+from xgboost import XGBClassifier
+
+xgb_model = XGBClassifier(
+    use_label_encoder=False,
+    eval_metric='logloss',
+    scale_pos_weight=9.25,
+    learning_rate=0.1,
+    max_depth=6,
+    n_estimators=200,
+    colsample_bytree=0.7,
+    subsample=0.8,
+    tree_method='hist',           # use 'gpu_hist' if running on CUDA-enabled XGBoost
+    random_state=42
+)
+xgb_model.fit(x_train, y_train)
+
+val_pred = xgb_model.predict(x_val)
+val_metrics = calculate_metrics(y_val, val_pred)
+
+test_pred = xgb_model.predict(x_test)
+test_metrics = calculate_metrics(y_test, test_pred)
+
+# %%
