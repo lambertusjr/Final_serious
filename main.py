@@ -287,39 +287,18 @@ boxplots_by_metric(df_long)
 bar_means_with_ci(df_summary, metric="f1_illicit")
 
 #%% Train encoder
-from models import GINEncoder
-
-embedding_dim = 256
-encoder = GINEncoder(
-    num_node_features=data.num_features,   
-    hidden_units=128, 
-    embedding_dim=embedding_dim
-    ).to(data.x.device)
-
-head = nn.Linear(embedding_dim, 2).to(data.x.device)
-optimizer = torch.optim.Adam(list(encoder.parameters()) + list(head.parameters()), lr=0.05, weight_decay=5e-4)
-criterion = FocalLoss(alpha=0.5, gamma=2.5, reduction='mean')
-
-encoder.train()
-head.train()
-for epoch in range(200):
-    optimizer.zero_grad()
-    z = encoder(data)                                # [N, embedding_dim]
-    logits = head(z)                                 # [N, 2]
-    loss = criterion(logits[train_perf_eval], data.y[train_perf_eval])
-    loss.backward()
-    optimizer.step()
-
-    with torch.no_grad():
-        encoder.eval(); head.eval()
-        val_logits = head(encoder(data))
-        val_pred = val_logits[val_perf_eval].argmax(dim=-1)
-        val_metrics = calculate_metrics(
-            data.y[val_perf_eval].cpu().numpy(),
-            val_pred.cpu().numpy()
-        )
-    encoder.train(); head.train()
-    
+from encoding import pre_train_GIN_encoder
+encoder, best_encoder_state = pre_train_GIN_encoder(
+    data=data,
+    train_perf_eval=train_perf_eval,
+    val_perf_eval=val_perf_eval,
+    num_classes=2,
+    hidden_units=256,
+    lr=0.05,
+    weight_decay=5e-4,
+    epochs=100,
+    embedding_dim=128
+)
 
 
 
