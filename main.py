@@ -294,8 +294,6 @@ encoder, best_encoder_state = pre_train_GIN_encoder(
     val_perf_eval=val_perf_eval,
     num_classes=2,
     hidden_units=256,
-    lr=0.05,
-    weight_decay=5e-4,
     epochs=100,
     embedding_dim=128
 )
@@ -321,13 +319,14 @@ xgb_model = XGBClassifier(
     use_label_encoder=False,
     eval_metric='logloss',
     scale_pos_weight=9.25,
-    learning_rate=0.1,
-    max_depth=6,
+    learning_rate=0.05,
+    max_depth=8,
     n_estimators=200,
     colsample_bytree=0.7,
     subsample=0.8,
-    tree_method='hist',           # use 'gpu_hist' if running on CUDA-enabled XGBoost
-    random_state=42
+    tree_method='hist',          
+    random_state=42,
+    
 )
 xgb_model.fit(x_train, y_train)
 
