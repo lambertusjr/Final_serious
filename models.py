@@ -146,3 +146,5 @@ class GINEncoder(nn.Module):
     def embed(self, data):
         self.eval()
         return self.forward(data)
+
+

@@ -93,4 +93,4 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             pred = xgb_model.predict(data.x[test_perf_eval].cpu().numpy())
             metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
             return metrics
-
+from torch_geometric.data import Data

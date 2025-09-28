@@ -257,11 +257,13 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN'],
+                                                models=['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB', 'LSTMe+GINe+XGB', 'XGBe+LSTMe+GIN'],
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
-                                                test_perf_eval=test_perf_eval
+                                                test_perf_eval=test_perf_eval,
+                                                train_mask=train_mask,
+                                                val_mask=val_mask
                                                 )
 
 #Save results from optimization
