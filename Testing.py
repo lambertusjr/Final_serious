@@ -125,7 +125,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             tree_method=tree_method,
             device=("cuda" if torch.cuda.is_available() else "cpu")
         )
-        emb_data = make_xgbe_embeddings(xgbe, data, train_mask, val_mask, None)  # test not needed for val objective
+        emb_data = make_xgbe_embeddings(xgbe, data, train_perf_eval, val_perf_eval, None)  # test not needed for val objective
         model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden)
         optimizer = torch.optim.Adam(model_instance.parameters(), lr=lr, weight_decay=weight_decay)
         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
@@ -373,7 +373,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                             tree_method=tree_method,
                             device=("cuda" if torch.cuda.is_available() else "cpu")
                         )
-                        emb_data = make_xgbe_embeddings(xgbe, data, train_mask, val_mask, None)  # test not needed for val objective
+                        emb_data = make_xgbe_embeddings(xgbe, data, train_perf_eval, val_perf_eval, None)  # test not needed for val objective
                         model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden)
                         optimizer = torch.optim.Adam(model_instance.parameters(), lr=lr, weight_decay=weight_decay)
                         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
