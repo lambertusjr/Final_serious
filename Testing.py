@@ -83,7 +83,30 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             #Setting model instance
             from models import GIN
             model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden).to(device)
-        
+    elif model == 'GINe+XGB':
+            # ---- GIN encoder hyperparameters ----
+            embedding_dim   = trial.suggest_categorical("gin_embedding_dim", [64, 96, 128, 192, 256])
+            gin_hidden      = trial.suggest_int("gin_hidden_units", 64, 256, step=32)
+            #gin_layers     = trial.suggest_int("gin_layers", 2, 5)
+            #dropout        = trial.suggest_float("gin_dropout", 0.0, 0.5)
+            lr_GIN          = trial.suggest_float("gin_lr", 1e-4, 5e-2, log=True)
+            lr_GIN_head     = trial.suggest_float("gin_head_lr", 1e-4, 5e-2, log=True)
+            weight_decay    = trial.suggest_float("gin_weight_decay", 1e-6, 1e-2, log=True)
+            dropout         = trial.suggest_float("gin_dropout", 0.0, 0.5)
+
+            # ---- XGBoost classifier hyperparameters ----
+            n_estimators    = trial.suggest_int("xgb_n_estimators", 100, 600, step=50)
+            max_depth       = trial.suggest_int("xgb_max_depth", 3, 10)
+            learning_rate_XGB   = trial.suggest_float("xgb_learning_rate", 1e-3, 2e-1, log=True)
+            subsample       = trial.suggest_float("xgb_subsample", 0.5, 1.0)
+            colsample_bt    = trial.suggest_float("xgb_colsample_bytree", 0.5, 1.0)
+            reg_lambda      = trial.suggest_float("xgb_reg_lambda", 0.0, 10.0)
+            reg_alpha       = trial.suggest_float("xgb_reg_alpha", 0.0, 5.0)
+
+            #Setting model instance
+            from models import GINEncoder
+            model_instance = GINEncoder(num_node_features = data.num_node_features, hidden_units=gin_hidden, embedding_dim=embedding_dim, dropout=dropout).to(device)
+
 #Section where training and evaulation happens
 
     wrapper_models = ['MLP', 'GCN', 'GAT', 'GIN'] # models that use ModelWrapper
@@ -149,7 +172,52 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         if best_f1 is None:
             exit("Best F1 is None, something went wrong during training.")
         return best_f1
-    
+    elif model =='GINe+XGB':
+        from encoding import pre_train_GIN_encoder
+        encoder, best_encoder_state = pre_train_GIN_encoder(
+            data=data,
+            train_perf_eval=train_perf_eval,
+            val_perf_eval=val_perf_eval,
+            num_classes=2,
+            hidden_units=gin_hidden,
+            lr_encoder=lr_GIN,
+            lr_head=lr_GIN_head,
+            wd_encoder=weight_decay,
+            wd_head=0.0,
+            epochs=200,
+            embedding_dim= embedding_dim
+        )
+        encoder.eval()
+        with torch.no_grad():
+            embedding_data = encoder(data)
+        
+        #Applying masks to embedded data
+        x_train = embedding_data[train_perf_eval].cpu().numpy()
+        y_train = data.y[train_perf_eval].cpu().numpy()
+        x_val = embedding_data[val_perf_eval].cpu().numpy()
+        y_val = data.y[val_perf_eval].cpu().numpy()
+        
+        #Fit XGBoost model
+        XGB_model = XGBClassifier(use_label_encoder=False,
+                                  eval_metric='logloss',
+                                  scale_pos_weight=9.25,
+                                  learning_rate=learning_rate_XGB,
+                                  max_depth=max_depth,
+                                  n_estimators=n_estimators,
+                                  colsample_bytree=colsample_bt,
+                                  subsample=subsample,
+                                  tree_method = 'hist',
+                                  reg_lambda=reg_lambda,
+                                  reg_alpha=reg_alpha,
+                                  device=("cuda" if torch.cuda.is_available() else "cpu")
+                                  )
+        
+        #Fit model to embedding data
+        XGB_model.fit(x_train, y_train)
+        
+        val_pred = XGB_model.predict(x_val)
+        val_metrics = calculate_metrics(y_val, val_pred)
+        return val_metrics['f1_illicit']
 
 from training_functions import train_and_test_NMW_models
 
@@ -280,12 +348,13 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
             weight_decay = params_for_model.get("weight_decay", 0.0001)
             alpha = params_for_model.get("alpha", 0.5)
             gamma_focal = params_for_model.get("gamma_focal", 2.0)
+            criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
             for _ in range(30):
                 match model_name:
                     case "MLP":
                         MLP_model = MLP(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to(device)
                         optimizer = torch.optim.Adam(MLP_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-                        criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                        #criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
                         model_wrapper = ModelWrapper(model=MLP_model, optimizer=optimizer, criterion=criterion)
                         
                         test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
@@ -315,7 +384,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                     case "GCN":
                         GCN_model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to(device)
                         optimizer = torch.optim.Adam(GCN_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-                        criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                        #criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
                         model_wrapper = ModelWrapper(model=GCN_model, optimizer=optimizer, criterion=criterion)
                         
                         test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
@@ -333,7 +402,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                         num_heads = params_for_model.get("num_heads", 4)
                         GAT_model = GAT(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units, num_heads=num_heads).to(device)
                         optimizer = torch.optim.Adam(GAT_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-                        criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                        #criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
                         model_wrapper = ModelWrapper(model=GAT_model, optimizer=optimizer, criterion=criterion)
 
                         test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
@@ -350,7 +419,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                     case "GIN":
                         GIN_model = GIN(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to(device)
                         optimizer = torch.optim.Adam(GIN_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-                        criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+                        #criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
                         model_wrapper = ModelWrapper(model=GIN_model, optimizer=optimizer, criterion=criterion)
                         
                         test_metrics, best_f1 = train_and_test(model_wrapper=model_wrapper,
@@ -406,7 +475,13 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                         testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
                         testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
                         testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
-                    #Next adding other model
+                    case "GINe+XGB":
+                        #Getting GIN encoder hyperparameters
+                        embedding_dim = params_for_model.get("gin_embedding_dim", 256)
+                        gin_hidden = params_for_model.get("gin_hidden_units", 256)
+                        lr_GIN = params_for_model.get("gin_lr", 0.05)
+                        lr_GIN_head = params_for_model.get("gin_head_lr", 0.05)
+                        weight_decay = params_for_model.get("gin_weight_decay", 0.0001)
 
     return model_parameters, testing_results
             #need to start writing introduction
