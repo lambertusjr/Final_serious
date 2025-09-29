@@ -78,6 +78,10 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             #dropout         = trial.suggest_float("gin_dropout", 0.0, 0.5)
             lr              = trial.suggest_float("gin_lr", 1e-4, 5e-2, log=True)
             weight_decay    = trial.suggest_float("gin_weight_decay", 1e-6, 1e-2, log=True)
+            
+            #Setting model instance
+            from models import GIN
+            model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden)
         
 #Section where training and evaulation happens
 
@@ -126,7 +130,6 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             device=("cuda" if torch.cuda.is_available() else "cpu")
         )
         emb_data = make_xgbe_embeddings(xgbe, data, train_perf_eval, val_perf_eval, None)  # test not needed for val objective
-        model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden)
         optimizer = torch.optim.Adam(model_instance.parameters(), lr=lr, weight_decay=weight_decay)
         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
         metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, emb_data, train_perf_eval, val_perf_eval, num_epochs=200)
