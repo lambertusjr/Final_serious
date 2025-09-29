@@ -133,6 +133,18 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         emb_data = make_xgbe_embeddings(xgbe, data, train_perf_eval, val_perf_eval, None).to(device) # test not needed for val objective
         optimizer = torch.optim.Adam(model_instance.parameters(), lr=lr, weight_decay=weight_decay)
         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
+        try: 
+            print(
+                "XGBe+GIN devices",
+                "emb_x", emb_data.x.device,
+                "emb_edge_index", emb_data.edge_index.device,
+                "y", emb_data.y.device,
+                "train_perf_eval", train_perf_eval.device,
+                "val_perf_eval", val_perf_eval.device,
+                "model", model_wrapper.model.device
+                )
+        except Exception as e:
+            print(f"Error printing device info: {e}")
         metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, emb_data, train_perf_eval, val_perf_eval, num_epochs=200)
         if best_f1 is None:
             exit("Best F1 is None, something went wrong during training.")
@@ -399,6 +411,5 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
     return model_parameters, testing_results
             #need to start writing introduction
             #Start with excel sheet on places to publish paper
-            
-            
-            
+
+
