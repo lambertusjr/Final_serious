@@ -9,6 +9,7 @@ from training_functions import train_and_validate, train_and_test
 
 import torch
 models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, val_mask):
@@ -129,7 +130,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             tree_method=tree_method,
             device=("cuda" if torch.cuda.is_available() else "cpu")
         )
-        emb_data = make_xgbe_embeddings(xgbe, data, train_perf_eval, val_perf_eval, None)  # test not needed for val objective
+        emb_data = make_xgbe_embeddings(xgbe, data, train_perf_eval, val_perf_eval, None).to(device) # test not needed for val objective
         optimizer = torch.optim.Adam(model_instance.parameters(), lr=lr, weight_decay=weight_decay)
         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
         metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, emb_data, train_perf_eval, val_perf_eval, num_epochs=200)
