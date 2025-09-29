@@ -14,6 +14,15 @@ from Helper_functions import calculate_metrics
 from models import ModelWrapper, MLP
 
 def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs, best_f1 = -1, best_f1_model_wts = None):
+    # Device alignment guard (fail fast with clear message)
+    mdl_dev = next(model_wrapper.model.parameters()).device
+    if not (data.x.device == mdl_dev and train_perf_eval.device == mdl_dev and val_perf_eval.device == mdl_dev):
+        raise RuntimeError(
+            f"Device mismatch: model={mdl_dev}, data.x={data.x.device}, "
+            f"train_mask={train_perf_eval.device}, val_mask={val_perf_eval.device}"
+        )
+
+    
     metrics = {
         'precision_weighted': [],
         'precision_illicit': [],
