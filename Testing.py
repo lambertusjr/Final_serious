@@ -82,7 +82,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             
             #Setting model instance
             from models import GIN
-            model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden)
+            model_instance = GIN(num_node_features=embedding_dim, num_classes=2, hidden_units=gin_hidden).to(device)
         
 #Section where training and evaulation happens
 
