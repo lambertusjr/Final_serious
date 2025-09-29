@@ -130,6 +130,8 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         optimizer = torch.optim.Adam(model_instance.parameters(), lr=lr, weight_decay=weight_decay)
         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
         metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, emb_data, train_perf_eval, val_perf_eval, num_epochs=200)
+        if best_f1 is None:
+            exit("Best F1 is None, something went wrong during training.")
         return best_f1
     
 
