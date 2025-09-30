@@ -2,10 +2,12 @@ import optuna
 import numpy as np
 from models import MLP, GCN, GAT, GIN, ModelWrapper
 from encoding import XGBEncoder, make_xgbe_embeddings
+from encoding import pre_train_GIN_encoder
 import torch
 import torch.nn as nn
 from Helper_functions import FocalLoss, calculate_metrics, run_trial_with_cleanup
 from training_functions import train_and_validate, train_and_test
+from xgboost import XGBClassifier
 
 import torch
 models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
@@ -476,12 +478,22 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                         testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
                         testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
                     case "GINe+XGB":
-                        #Getting GIN encoder hyperparameters
-                        embedding_dim = params_for_model.get("gin_embedding_dim", 256)
-                        gin_hidden = params_for_model.get("gin_hidden_units", 256)
-                        lr_GIN = params_for_model.get("gin_lr", 0.05)
-                        lr_GIN_head = params_for_model.get("gin_head_lr", 0.05)
-                        weight_decay = params_for_model.get("gin_weight_decay", 0.0001)
+                        from training_functions import train_and_test_GINeXGB
+                        test_metrics = train_and_test_GINeXGB(
+                            data=data,
+                            train_perf_eval=train_perf_eval,
+                            val_perf_eval=val_perf_eval,
+                            test_perf_eval=test_perf_eval,
+                            params_for_model=params_for_model
+                        )
+                        testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
+                        testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
+                        testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
+                        testing_results[model_name]['recall_illicit'].append(test_metrics['recall_illicit'])
+                        testing_results[model_name]['f1_weighted'].append(test_metrics['f1_weighted'])
+                        testing_results[model_name]['f1_illicit'].append(test_metrics['f1_illicit'])
+                    
+                        
 
     return model_parameters, testing_results
             #need to start writing introduction
