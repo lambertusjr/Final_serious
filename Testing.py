@@ -34,7 +34,6 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         C = trial.suggest_float('C', 0.1, 10.0, log=True)
         model_instance = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree)
     elif model == 'XGB':
-        from xgboost import XGBClassifier
         max_depth = trial.suggest_int('max_depth', 5, 15)
         Gamma_XGB = trial.suggest_float('Gamma_XGB', 0, 5)
         n_estimators = trial.suggest_int('n_estimators', 50, 500, step=50)
