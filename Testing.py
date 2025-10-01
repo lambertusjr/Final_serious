@@ -496,7 +496,5 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                         
 
     return model_parameters, testing_results
-            #need to start writing introduction
-            #Start with excel sheet on places to publish paper
 
 

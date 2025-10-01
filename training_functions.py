@@ -107,6 +107,7 @@ from torch_geometric.data import Data
 
 #GIN encoder with XGB classifier model
 def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf_eval, params_for_model):
+    from xgboost import XGBClassifier
     from encoding import pre_train_GIN_encoder
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     data = data.to(device)
