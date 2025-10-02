@@ -96,3 +96,55 @@ class ModelWrapper:
         metrics = calculate_metrics(data.y[mask].cpu().numpy(), pred[mask].cpu().numpy())
         return loss.item(), metrics
     
+#%% New models
+# torch>=2.0, torch-geometric>=2.4
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GINConv, BatchNorm
+
+class GINEncoder(nn.Module):
+    def __init__(self, num_node_features, hidden_units, embedding_dim, num_layers=2, dropout=0.2):
+        super(GINEncoder, self).__init__()
+
+        if num_layers < 1:
+            raise ValueError("GINEncoder requires at least one layer")
+
+        self.num_layers = num_layers
+        self.dropout = dropout
+
+        self.convs = nn.ModuleList()
+        self.bns = nn.ModuleList()
+
+        for layer_idx in range(num_layers):
+            in_channels = num_node_features if layer_idx == 0 else hidden_units
+            mlp = nn.Sequential(
+                nn.Linear(in_channels, hidden_units),
+                nn.ReLU(),
+                nn.Linear(hidden_units, hidden_units)
+            )
+            self.convs.append(GINConv(mlp, train_eps=False))
+            self.bns.append(BatchNorm(hidden_units))
+
+        self.projection = nn.Linear(hidden_units, embedding_dim)
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+
+        for layer_idx, (conv, bn) in enumerate(zip(self.convs, self.bns)):
+            x = conv(x, edge_index)
+            x = bn(x)
+            x = F.relu(x)
+            if layer_idx < self.num_layers - 1:
+                x = F.dropout(x, p=self.dropout, training=self.training)
+
+        x = self.projection(x)
+        x = F.normalize(x, p=2, dim=-1)
+        return x
+
+    @torch.no_grad()
+    def embed(self, data):
+        self.eval()
+        return self.forward(data)
+
+

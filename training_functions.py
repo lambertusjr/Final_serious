@@ -10,10 +10,21 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
 from Helper_functions import calculate_metrics
 from models import ModelWrapper, MLP
 
+
 def train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs, best_f1 = -1, best_f1_model_wts = None):
+    # Device alignment guard (fail fast with clear message)
+    mdl_dev = next(model_wrapper.model.parameters()).device
+    if not (data.x.device == mdl_dev and train_perf_eval.device == mdl_dev and val_perf_eval.device == mdl_dev):
+        raise RuntimeError(
+            f"Device mismatch: model={mdl_dev}, data.x={data.x.device}, "
+            f"train_mask={train_perf_eval.device}, val_mask={val_perf_eval.device}"
+        )
+
+    
     metrics = {
         'precision_weighted': [],
         'precision_illicit': [],
@@ -93,3 +104,78 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             pred = xgb_model.predict(data.x[test_perf_eval].cpu().numpy())
             metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
             return metrics
+from torch_geometric.data import Data
+
+#GIN encoder with XGB classifier model
+def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf_eval, params_for_model):
+    
+    from encoding import pre_train_GIN_encoder
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    data = data.to(device)
+    train_perf_eval = train_perf_eval.to(device)
+    val_perf_eval = val_perf_eval.to(device)
+    test_perf_eval = test_perf_eval.to(device)
+    
+    #Extracting hyperparameters for GIN encoder pre-training from optuna trials
+    hidden_units = params_for_model.get("hidden_units", 64)
+    lr_encoder = params_for_model.get("gin_lr", 0.01)
+    wd_encoder = params_for_model.get("gin_weight_decay", 0.0001)
+    lr_head = params_for_model.get("xgb_lr", 0.1)
+    wd_head = params_for_model.get("xgb_weight_decay", 0.0)
+    epochs = params_for_model.get("epochs", 100)
+    embedding_dim = params_for_model.get("embedding_dim", 128)
+    
+    #initialize and pre-train GIN encoder
+    encoder, best_encoder_state = pre_train_GIN_encoder(
+        data=data,
+        train_perf_eval = train_perf_eval,
+        val_perf_eval = val_perf_eval,
+        hidden_units=hidden_units,
+        lr_encoder=lr_encoder,
+        wd_encoder=wd_encoder,
+        lr_head=lr_head,
+        wd_head=wd_head,
+        epochs=epochs,
+        embedding_dim=embedding_dim
+    )
+    encoder.load_state_dict(best_encoder_state)
+    encoder.eval()
+    with torch.no_grad():
+        embeddings = encoder.embed(data).to(device)
+        
+    #Applying mask to embeddings and labels
+    x_train = embeddings[train_perf_eval | val_perf_eval].cpu().numpy() #Combining to increase available training data
+    y_train = data.y[train_perf_eval | val_perf_eval].cpu().numpy()
+    x_test = embeddings[test_perf_eval].cpu().numpy()
+    y_test = data.y[test_perf_eval].cpu().numpy()
+    
+    #Getting XGBoost classifier hyperparameters
+    n_estimators = params_for_model.get("xgb_n_estimators", 300)
+    max_depth = params_for_model.get("xgb_max_depth", 6)
+    learning_rate_XGB = params_for_model.get("xgb_learning_rate", 0.05)
+    subsample = params_for_model.get("xgb_subsample", 0.8)
+    colsample_bt = params_for_model.get("xgb_colsample_bytree", 0.8)
+    reg_lambda = params_for_model.get("xgb_reg_lambda", 1.0)
+    reg_alpha = params_for_model.get("xgb_reg_alpha", 0.0)
+    #Fit XGBoost model
+    xgb_model = XGBClassifier(
+            use_label_encoder=False,
+            eval_metric='logloss',
+            scale_pos_weight=9.25,
+            learning_rate=learning_rate_XGB,
+            max_depth=max_depth,
+            n_estimators=n_estimators,
+            colsample_bytree=colsample_bt,
+            subsample=subsample,
+            tree_method = 'hist',
+            reg_lambda=reg_lambda,
+            reg_alpha=reg_alpha,
+            device=("cuda" if torch.cuda.is_available() else "cpu")
+            )
+    #Fit model to embedding data
+    xgb_model.fit(x_train, y_train)
+    
+    #Generate predictions
+    test_pred = xgb_model.predict(x_test)
+    test_metrics = calculate_metrics(y_test, test_pred)
+    return test_metrics

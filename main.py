@@ -11,7 +11,7 @@ RF_prototype = False
 parameter_tuning = False
 validation_runs = False
 Full_run = True
-num_epochs = 200
+num_epochs = 20
 #%% Setup
 # Detecting system
 import platform
@@ -257,11 +257,13 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN'],
+                                                models=['GCN', 'GAT', 'GIN', 'MLP', 'SVM', 'XGB', 'RF', 'XGBe+GIN', 'GINe+XGB'],   # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
-                                                test_perf_eval=test_perf_eval
+                                                test_perf_eval=test_perf_eval,
+                                                train_mask=train_mask,
+                                                val_mask=val_mask
                                                 )
 
 #Save results from optimization
@@ -285,3 +287,74 @@ df_long, df_summary, df_wide = produce_tables(testing_results)
 boxplots_by_metric(df_long)
 # Bar means with CI
 bar_means_with_ci(df_summary, metric="f1_illicit")
+
+#%% Train encoder
+from encoding import pre_train_GIN_encoder
+encoder, best_encoder_state = pre_train_GIN_encoder(
+    data=data,
+    train_perf_eval=train_perf_eval,
+    val_perf_eval=val_perf_eval,
+    num_classes=2,
+    hidden_units=256,
+    epochs=100,
+    embedding_dim=128
+)
+
+
+
+#%% Generate embeddings
+encoder.eval()
+with torch.no_grad():
+    node_embeddings = encoder.embed(data)            # [N, embedding_dim]
+
+x_train = node_embeddings[train_perf_eval].cpu().numpy()
+y_train = data.y[train_perf_eval].cpu().numpy()
+x_val   = node_embeddings[val_perf_eval].cpu().numpy()
+y_val   = data.y[val_perf_eval].cpu().numpy()
+x_test  = node_embeddings[test_perf_eval].cpu().numpy()
+y_test  = data.y[test_perf_eval].cpu().numpy()
+
+#%% Fit XGBoost
+from xgboost import XGBClassifier
+
+xgb_model = XGBClassifier(
+    use_label_encoder=False,
+    eval_metric='logloss',
+    scale_pos_weight=9.25,
+    learning_rate=0.05,
+    max_depth=8,
+    n_estimators=200,
+    colsample_bytree=0.7,
+    subsample=0.8,
+    tree_method='hist',          
+    random_state=42,
+    
+)
+xgb_model.fit(x_train, y_train)
+
+val_pred = xgb_model.predict(x_val)
+val_metrics = calculate_metrics(y_val, val_pred)
+
+test_pred = xgb_model.predict(x_test)
+test_metrics = calculate_metrics(y_test, test_pred)
+
+# %% LSTM temporary pipeline
+
+from LSTM_pipeline import run_lstm_embeddings_xgb
+
+result = run_lstm_embeddings_xgb(
+    features_df=features_df,
+    data=data,
+    train_perf_eval=train_perf_eval,
+    val_perf_eval=val_perf_eval,
+    test_perf_eval=test_perf_eval,
+    T=49,
+    lstm_hidden_dim=128,
+    projection_dim=256,
+    warmstart_epochs=20,          # set 0 to skip
+    xgb_params={"tree_method": "hist"}  # use 'gpu_hist' if available
+)
+
+print("VAL:", result["val_metrics"])
+print("TEST:", result["test_metrics"])
+# embeddings available as result["embeddings"]
