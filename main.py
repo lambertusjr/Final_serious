@@ -288,56 +288,6 @@ boxplots_by_metric(df_long)
 # Bar means with CI
 bar_means_with_ci(df_summary, metric="f1_illicit")
 
-#%% Train encoder
-from encoding import pre_train_GIN_encoder
-encoder, best_encoder_state = pre_train_GIN_encoder(
-    data=data,
-    train_perf_eval=train_perf_eval,
-    val_perf_eval=val_perf_eval,
-    num_classes=2,
-    hidden_units=256,
-    epochs=100,
-    embedding_dim=128
-)
-
-
-
-#%% Generate embeddings
-encoder.eval()
-with torch.no_grad():
-    node_embeddings = encoder.embed(data)            # [N, embedding_dim]
-
-x_train = node_embeddings[train_perf_eval].cpu().numpy()
-y_train = data.y[train_perf_eval].cpu().numpy()
-x_val   = node_embeddings[val_perf_eval].cpu().numpy()
-y_val   = data.y[val_perf_eval].cpu().numpy()
-x_test  = node_embeddings[test_perf_eval].cpu().numpy()
-y_test  = data.y[test_perf_eval].cpu().numpy()
-
-#%% Fit XGBoost
-from xgboost import XGBClassifier
-
-xgb_model = XGBClassifier(
-    use_label_encoder=False,
-    eval_metric='logloss',
-    scale_pos_weight=9.25,
-    learning_rate=0.05,
-    max_depth=8,
-    n_estimators=200,
-    colsample_bytree=0.7,
-    subsample=0.8,
-    tree_method='hist',          
-    random_state=42,
-    
-)
-xgb_model.fit(x_train, y_train)
-
-val_pred = xgb_model.predict(x_val)
-val_metrics = calculate_metrics(y_val, val_pred)
-
-test_pred = xgb_model.predict(x_test)
-test_metrics = calculate_metrics(y_test, test_pred)
-
 # %% LSTM temporary pipeline
 
 from LSTM_pipeline import run_lstm_embeddings_xgb
