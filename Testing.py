@@ -34,7 +34,6 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         C = trial.suggest_float('C', 0.1, 10.0, log=True)
         model_instance = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree)
     elif model == 'XGB':
-        from xgboost import XGBClassifier
         max_depth = trial.suggest_int('max_depth', 5, 15)
         Gamma_XGB = trial.suggest_float('Gamma_XGB', 0, 5)
         n_estimators = trial.suggest_int('n_estimators', 50, 500, step=50)
@@ -337,7 +336,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                 lambda trial: run_trial_with_cleanup(
                     objective, model_name, trial, model_name, data, train_perf_eval, val_perf_eval, train_mask, val_mask
                 ),
-                n_trials=200
+                n_trials=20
             )
 
             print(f"Best hyperparameters for {model_name}:", study.best_params)
