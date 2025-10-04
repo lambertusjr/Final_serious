@@ -52,3 +52,31 @@ def create_elliptic_masks(data):
     test_perf_eval = test_mask & (data.y != -1)
     
     return train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval
+
+def make_ibm_masks(data, train_ratio=0.7, val_ratio=0.15, seed=42):
+    torch.manual_seed(seed)
+    idx = torch.randperm(data.num_nodes, device=data.x.device)
+    n_train = int(train_ratio * len(idx))
+    n_val = int(val_ratio * len(idx))
+
+    train_idx = idx[:n_train]
+    val_idx   = idx[n_train:n_train + n_val]
+    test_idx  = idx[n_train + n_val:]
+
+    train_mask = torch.zeros(data.num_nodes, dtype=torch.bool, device=idx.device)
+    val_mask   = train_mask.clone()
+    test_mask  = train_mask.clone()
+
+    train_mask[train_idx] = True
+    val_mask[val_idx] = True
+    test_mask[test_idx] = True
+
+    known = data.y != -1  # keep convention if you label unknowns as -1
+    return (
+        train_mask,
+        val_mask,
+        test_mask,
+        train_mask & known,
+        val_mask & known,
+        test_mask & known,
+    )
