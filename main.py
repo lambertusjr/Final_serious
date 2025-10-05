@@ -3,11 +3,11 @@
 
 
 seeded_run = True
-prototyping = False
-MLP_prototype = False
-svm_prototype = False
-XGB_prototype = False
-RF_prototype = False
+prototyping = True
+MLP_prototype = True
+svm_prototype = True
+XGB_prototype = True
+RF_prototype = True
 parameter_tuning = False
 validation_runs = False
 elliptic_dataset = False
