@@ -53,25 +53,42 @@ def create_elliptic_masks(data):
     
     return train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval
 
-def make_ibm_masks(data, train_ratio=0.7, val_ratio=0.15, seed=42):
-    torch.manual_seed(seed)
-    idx = torch.randperm(data.num_nodes, device=data.x.device)
-    n_train = int(train_ratio * len(idx))
-    n_val = int(val_ratio * len(idx))
+def make_ibm_masks(
+    data,
+    train_ratio: float = 0.6,
+    val_ratio: float = 0.2,
+    temporal_feature_index: int = 1,
+    ascending: bool = True,
+):
+    """Create chronological train/val/test masks for the IBM AML graph."""
+    if not (0.0 < train_ratio < 1.0):
+        raise ValueError("train_ratio must lie within (0, 1)")
+    if not (0.0 <= val_ratio < 1.0):
+        raise ValueError("val_ratio must lie within [0, 1)")
+    if train_ratio + val_ratio >= 1.0:
+        raise ValueError("train_ratio + val_ratio must be < 1")
 
-    train_idx = idx[:n_train]
-    val_idx   = idx[n_train:n_train + n_val]
-    test_idx  = idx[n_train + n_val:]
+    timestamps = data.x[:, temporal_feature_index].view(-1)
+    sort_order = torch.argsort(timestamps, descending=not ascending)
+    n_total = sort_order.numel()
 
-    train_mask = torch.zeros(data.num_nodes, dtype=torch.bool, device=idx.device)
-    val_mask   = train_mask.clone()
-    test_mask  = train_mask.clone()
+    n_train = int(train_ratio * n_total)
+    n_val = int(val_ratio * n_total)
+
+    train_idx = sort_order[:n_train]
+    val_idx = sort_order[n_train:n_train + n_val]
+    test_idx = sort_order[n_train + n_val:]
+
+    device = data.x.device
+    train_mask = torch.zeros(data.num_nodes, dtype=torch.bool, device=device)
+    val_mask = torch.zeros_like(train_mask)
+    test_mask = torch.zeros_like(train_mask)
 
     train_mask[train_idx] = True
     val_mask[val_idx] = True
     test_mask[test_idx] = True
 
-    known = data.y != -1  # keep convention if you label unknowns as -1
+    known = data.y != -1
     return (
         train_mask,
         val_mask,

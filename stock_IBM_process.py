@@ -56,25 +56,29 @@ class AMLtoGraph(InMemoryDataset):
         return df, receiving_df, paying_df, currency_ls
 
     def get_all_account(self, df):
-        ldf = df[['Account', 'From Bank']]
-        rdf = df[['Account.1', 'To Bank']]
-        suspicious = df[df['Is Laundering']==1]
+        ldf = df[['Account', 'From Bank', 'Timestamp']]
+        rdf = df[['Account.1', 'To Bank', 'Timestamp']]
+        suspicious = df[df['Is Laundering'] == 1]
         s1 = suspicious[['Account', 'Is Laundering']]
-        s2 = suspicious[['Account.1', 'Is Laundering']]
-        s2 = s2.rename({'Account.1': 'Account'}, axis=1)
-        suspicious = pd.concat([s1, s2], join='outer')
-        suspicious = suspicious.drop_duplicates()
+        s2 = suspicious[['Account.1', 'Is Laundering']].rename({'Account.1': 'Account'}, axis=1)
+        suspicious = pd.concat([s1, s2], join='outer').drop_duplicates()
 
         ldf = ldf.rename({'From Bank': 'Bank'}, axis=1)
         rdf = rdf.rename({'Account.1': 'Account', 'To Bank': 'Bank'}, axis=1)
-        df = pd.concat([ldf, rdf], join='outer')
-        df = df.drop_duplicates()
+        accounts = pd.concat([ldf, rdf], join='outer', ignore_index=True)
 
-        df['Is Laundering'] = 0
-        df.set_index('Account', inplace=True)
-        df.update(suspicious.set_index('Account'))
-        df = df.reset_index()
-        return df
+        accounts = (
+            accounts.sort_values(['Account', 'Timestamp'])
+            .groupby('Account', as_index=False)
+            .agg({'Bank': 'last', 'Timestamp': 'max'})
+        )
+        accounts = accounts.rename({'Timestamp': 'latest_timestamp'}, axis=1)
+
+        accounts['Is Laundering'] = 0
+        accounts.set_index('Account', inplace=True)
+        accounts.update(suspicious.set_index('Account'))
+        return accounts.reset_index()
+
     
     def paid_currency_aggregate(self, currency_ls, paying_df, accounts):
         for i in currency_ls:

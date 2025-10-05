@@ -10,6 +10,8 @@ XGB_prototype = False
 RF_prototype = False
 parameter_tuning = False
 validation_runs = False
+elliptic_dataset = False
+IBM_dataset = True
 Full_run = True
 num_epochs = 20
 #%% Setup
@@ -64,21 +66,38 @@ from training_functions import train_and_validate
 from Helper_functions import FocalLoss, calculate_metrics
 from analysis import results_to_long_df, summarise_long_df, formatted_wide_table, produce_tables, boxplots_by_metric, bar_means_with_ci
 #%% Getting data ready for models
-features_df, classes_df, edgelist_df = readfiles(pc)
-features_df, classes_df, edgelist_df, known_nodes = elliptic_pre_processing(features_df, classes_df, edgelist_df)
-data = create_data_object(features_df, classes_df, edgelist_df)
-data = data.to('cuda' if torch.cuda.is_available() else 'cpu')
+from pre_processing import make_ibm_masks
+if elliptic_dataset == True:
+    features_df, classes_df, edgelist_df = readfiles(pc)
+    features_df, classes_df, edgelist_df, known_nodes = elliptic_pre_processing(features_df, classes_df, edgelist_df)
+    data = create_data_object(features_df, classes_df, edgelist_df)
+    data = data.to('cuda' if torch.cuda.is_available() else 'cpu')
 
-train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval = create_elliptic_masks(data)
-
-print_tensor_info(
-    train_mask=train_mask,
-    val_mask=val_mask,
-    test_mask=test_mask,
-    train_perf_eval=train_perf_eval,
-    val_perf_eval=val_perf_eval,
-    test_perf_eval=test_perf_eval
-)
+    train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval = create_elliptic_masks(data)
+    
+if IBM_dataset == True:
+    from stock_IBM_process import AMLtoGraph
+    if pc =='Darwin':
+        dataset = AMLtoGraph(root='/Users/lambertusvanzyl/Desktop/Final_serious/data')
+        data: Data = dataset[0]
+    else:
+        dataset = AMLtoGraph(root='/Users/Lambertus/Desktop/Final_serious/data')
+        data: Data = dataset[0]
+    data = data.to('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    data.y = data.y.long()
+    
+    train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval = make_ibm_masks(data)
+    
+    
+# print_tensor_info(
+#     train_mask=train_mask,
+#     val_mask=val_mask,
+#     test_mask=test_mask,
+#     train_perf_eval=train_perf_eval,
+#     val_perf_eval=val_perf_eval,
+#     test_perf_eval=test_perf_eval
+# )
 #%% Testing if the model runs
 if prototyping == True:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
