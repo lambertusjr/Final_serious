@@ -6,13 +6,13 @@ from contextlib import contextmanager
 
 def calculate_metrics(y_true, y_pred):
     precision_score_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
-    precision_score_illicit = precision_score(y_true, y_pred, pos_label=0, average='binary', zero_division=0)
+    precision_score_illicit = precision_score(y_true, y_pred, pos_label=1, average='binary', zero_division=0)
     
     recall_score_weighted = recall_score(y_true, y_pred, average='weighted')
-    recall_score_illicit = recall_score(y_true, y_pred, pos_label=0, average='binary')
+    recall_score_illicit = recall_score(y_true, y_pred, pos_label=1, average='binary')
     
     f1_score_weighted = f1_score(y_true, y_pred, average='weighted')
-    f1_score_illicit = f1_score(y_true, y_pred, pos_label=0, average='binary')
+    f1_score_illicit = f1_score(y_true, y_pred, pos_label=1, average='binary')
     
     metrics = {
         'precision_weighted': precision_score_weighted,
