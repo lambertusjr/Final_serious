@@ -127,8 +127,8 @@ if MLP_prototype == True:
 if svm_prototype == True: #Toets ander kernel functions, regularisation parameters en gamma values
     from sklearn import svm
     clf = svm.SVC(kernel='linear', C=1.0)
-    clf.fit(data.x[train_perf_eval], data.y[train_perf_eval])
-    y_pred = clf.predict(data.x[val_perf_eval])
+    clf.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
+    y_pred = clf.predict(data.x[val_perf_eval].cpu().numpy())
     val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
     
 if XGB_prototype == True:
