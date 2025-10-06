@@ -109,7 +109,7 @@ if prototyping == True:
     val_perf_eval = val_perf_eval.to(device)
     model_wrapper = ModelWrapper(model, optimizer, criterion)
     #Beginning training
-    metrics, best_model_wts = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    metrics, best_f1_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
     
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -122,7 +122,7 @@ if MLP_prototype == True:
     data = data.to(device)
     train_perf_eval = train_perf_eval.to(device)
     val_perf_eval = val_perf_eval.to(device)
-    metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    metrics, best_f1_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
 
 if svm_prototype == True: #Toets ander kernel functions, regularisation parameters en gamma values
     from sklearn import svm
