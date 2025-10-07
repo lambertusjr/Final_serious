@@ -295,6 +295,7 @@ def save_testing_results_pickle(results, path="testing_results.pkl"):
 save_testing_results_pickle(testing_results, "testing_results.pkl")
 
 #%% Loading in saved results
+import pickle
 def load_testing_results_pickle(path="testing_results.pkl"):
     with open(path, "rb") as f:
         return pickle.load(f)
