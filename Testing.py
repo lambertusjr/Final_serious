@@ -336,7 +336,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                 lambda trial: run_trial_with_cleanup(
                     objective, model_name, trial, model_name, data, train_perf_eval, val_perf_eval, train_mask, val_mask
                 ),
-                n_trials=20
+                n_trials=200
             )
 
             print(f"Best hyperparameters for {model_name}:", study.best_params)

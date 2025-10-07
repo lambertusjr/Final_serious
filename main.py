@@ -2,18 +2,18 @@
 #notes:
 
 
-seeded_run = True
-prototyping = True
-MLP_prototype = True
-svm_prototype = True
-XGB_prototype = True
-RF_prototype = True
+seeded_run = False
+prototyping = False
+MLP_prototype = False
+svm_prototype = False
+XGB_prototype = False
+RF_prototype = False
 parameter_tuning = False
 validation_runs = False
-elliptic_dataset = False
-IBM_dataset = True
+elliptic_dataset = True
+IBM_dataset = False
 Full_run = True
-num_epochs = 20
+num_epochs = 200
 #%% Setup
 # Detecting system
 import platform
