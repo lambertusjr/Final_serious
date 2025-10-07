@@ -98,7 +98,7 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             from xgboost import XGBClassifier
             max_depth = params_for_model.get("max_depth", 10)
             n_estimators = params_for_model.get("n_estimators", 100)
-            xgb_model = XGBClassifier(max_depth=max_depth, n_estimators=n_estimators, scale_pos_weight=9.25)
+            xgb_model = XGBClassifier(max_depth=max_depth, n_estimators=n_estimators, scale_pos_weight=0.108)
             train_perf_eval = val_perf_eval #Combining to increase available training data
             xgb_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
             pred = xgb_model.predict(data.x[test_perf_eval].cpu().numpy())
@@ -161,7 +161,7 @@ def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf
     xgb_model = XGBClassifier(
             use_label_encoder=False,
             eval_metric='logloss',
-            scale_pos_weight=9.25,
+            scale_pos_weight=0.108,
             learning_rate=learning_rate_XGB,
             max_depth=max_depth,
             n_estimators=n_estimators,

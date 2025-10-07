@@ -40,7 +40,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         model_instance = XGBClassifier(
             use_label_encoder=False,
             eval_metric='logloss',
-            scale_pos_weight=9.25,
+            scale_pos_weight=0.108,
             learning_rate=learning_rate,
             max_depth=max_depth,
             n_estimators=n_estimators,

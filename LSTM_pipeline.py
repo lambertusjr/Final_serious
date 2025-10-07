@@ -212,7 +212,7 @@ def run_lstm_embeddings_xgb(
     default_xgb = dict(
         use_label_encoder=False,
         eval_metric="logloss",
-        scale_pos_weight=9.25,
+        scale_pos_weight=0.108,
         learning_rate=0.1,
         max_depth=6,
         n_estimators=200,
