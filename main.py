@@ -276,7 +276,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['GCN', 'GAT', 'GIN', 'MLP', 'SVM', 'XGB', 'RF', 'XGBe+GIN', 'GINe+XGB'],   # Add or remove models as needed
+                                                models=['SVM', 'XGB', 'RF'],   # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
