@@ -77,6 +77,7 @@ class AMLtoGraph(InMemoryDataset):
         accounts['Is Laundering'] = 0
         accounts.set_index('Account', inplace=True)
         accounts.update(suspicious.set_index('Account'))
+        accounts['Is Laundering'] = 1 - accounts['Is Laundering'] # Flip labels: 0=illicit, 1=licit
         return accounts.reset_index()
 
     

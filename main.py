@@ -10,8 +10,8 @@ XGB_prototype = False
 RF_prototype = False
 parameter_tuning = False
 validation_runs = False
-elliptic_dataset = True
-IBM_dataset = False
+elliptic_dataset = False
+IBM_dataset = True
 Full_run = True
 num_epochs = 200
 #%% Setup
@@ -276,7 +276,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['SVM', 'XGB', 'RF'],   # Add or remove models as needed
+                                                models=['XGB', 'RF', 'GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'],   # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
