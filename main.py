@@ -3,17 +3,20 @@
 
 
 seeded_run = False
-prototyping = False
-MLP_prototype = False
-svm_prototype = False
-XGB_prototype = False
-RF_prototype = False
+prototyping = True
+MLP_prototype = True
+svm_prototype = True
+XGB_prototype = True
+RF_prototype = True
 parameter_tuning = False
 validation_runs = False
 elliptic_dataset = False
 IBM_dataset = True
 Full_run = True
 num_epochs = 200
+
+
+#%% Quick functions
 #%% Setup
 # Detecting system
 import platform
@@ -276,7 +279,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['XGB', 'RF', 'GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'],   # Add or remove models as needed
+                                                models=['XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'],# 'XGB', 'RF',    # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,

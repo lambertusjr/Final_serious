@@ -1,8 +1,28 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, GATConv, GINConv
 from Helper_functions import calculate_metrics
+
+try:
+    from torch.amp import autocast as _torch_autocast
+    from torch.amp import GradScaler as _TorchGradScaler
+
+    def _autocast(enabled: bool):
+        return _torch_autocast("cuda", enabled=enabled)
+
+    def _make_scaler(enabled: bool):
+        return _TorchGradScaler("cuda", enabled=enabled)
+except (ImportError, TypeError, AttributeError):
+    from torch.cuda.amp import autocast as _torch_autocast  # type: ignore
+    from torch.cuda.amp import GradScaler as _TorchGradScaler  # type: ignore
+
+    def _autocast(enabled: bool):
+        return _torch_autocast(enabled=enabled)
+
+    def _make_scaler(enabled: bool):
+        return _TorchGradScaler(enabled=enabled)
 
 class GCN(nn.Module):
     def __init__(self, num_node_features, num_classes, hidden_units):
@@ -20,8 +40,11 @@ class GCN(nn.Module):
 class GAT(nn.Module):
     def __init__(self, num_node_features, num_classes, hidden_units, num_heads):
         super(GAT, self).__init__()
-        self.conv1 = GATConv(num_node_features, hidden_units, heads=num_heads, dropout=0.6)
-        self.conv2 = GATConv(hidden_units * num_heads, num_classes, heads=1, concat=False, dropout=0.6)
+        # Keep the total latent size roughly equal to hidden_units while limiting per-head width
+        per_head_dim = max(1, math.ceil(hidden_units / num_heads))
+        total_hidden = per_head_dim * num_heads
+        self.conv1 = GATConv(num_node_features, per_head_dim, heads=num_heads, dropout=0.6)
+        self.conv2 = GATConv(total_hidden, num_classes, heads=1, concat=False, dropout=0.6)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -74,27 +97,38 @@ class MLP(nn.Module):
         return x
     
 class ModelWrapper:
-    def __init__(self, model, optimizer, criterion):
+    def __init__(self, model, optimizer, criterion, use_amp=None):
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
+        enable_amp = torch.cuda.is_available() if use_amp is None else bool(use_amp)
+        self._use_amp = enable_amp
+        self._scaler = _make_scaler(enabled=self._use_amp)
         
     def train_step(self, data, mask):
         self.model.train()
         self.optimizer.zero_grad()
-        out = self.model(data)
-        loss = self.criterion(out[mask], data.y[mask])
-        loss.backward()
-        self.optimizer.step()
-        return loss.item()
+        with _autocast(enabled=self._use_amp):
+            out = self.model(data)
+            loss = self.criterion(out[mask], data.y[mask])
+        loss_value = float(loss.detach())
+        if self._use_amp:
+            self._scaler.scale(loss).backward()
+            self._scaler.step(self.optimizer)
+            self._scaler.update()
+        else:
+            loss.backward()
+            self.optimizer.step()
+        return loss_value
     def evaluate(self, data, mask):
         self.model.eval()
         with torch.no_grad():
-            out = self.model(data)
-            loss = self.criterion(out[mask], data.y[mask])
+            with _autocast(enabled=self._use_amp):
+                out = self.model(data)
+                loss = self.criterion(out[mask], data.y[mask])
             pred = out.argmax(dim=1)
         metrics = calculate_metrics(data.y[mask].cpu().numpy(), pred[mask].cpu().numpy())
-        return loss.item(), metrics
+        return float(loss.detach()), metrics
     
 #%% New models
 # torch>=2.0, torch-geometric>=2.4
