@@ -14,6 +14,12 @@ import torch
 models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+EARLY_STOP_KWARGS = {
+    "patience": 50,
+    "min_delta": 1e-4,
+}
+EARLY_STOP_LOGGING = False
+
 
 def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, val_mask):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -123,7 +129,15 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
     
     
     if model in wrapper_models:
-        metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs=200)
+        metrics, best_model_wts, best_f1 = train_and_validate(
+            model_wrapper,
+            data,
+            train_perf_eval,
+            val_perf_eval,
+            num_epochs=200,
+            **EARLY_STOP_KWARGS,
+            log_early_stop=EARLY_STOP_LOGGING
+        )
         return best_f1
     elif model == 'SVM':
         model_instance.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
@@ -170,7 +184,15 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
                 )
         except Exception as e:
             print(f"Error printing device info: {e}")
-        metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, emb_data, train_perf_eval, val_perf_eval, num_epochs=200)
+        metrics, best_model_wts, best_f1 = train_and_validate(
+            model_wrapper,
+            emb_data,
+            train_perf_eval,
+            val_perf_eval,
+            num_epochs=200,
+            **EARLY_STOP_KWARGS,
+            log_early_stop=EARLY_STOP_LOGGING
+        )
         if best_f1 is None:
             exit("Best F1 is None, something went wrong during training.")
         return best_f1
@@ -187,7 +209,10 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             wd_encoder=weight_decay,
             wd_head=0.0,
             epochs=200,
-            embedding_dim= embedding_dim
+            embedding_dim= embedding_dim,
+            patience=EARLY_STOP_KWARGS["patience"],
+            min_delta=EARLY_STOP_KWARGS["min_delta"],
+            log_early_stop=EARLY_STOP_LOGGING
         )
         encoder.eval()
         with torch.no_grad():
@@ -357,6 +382,11 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
         alpha = params_for_model.get("alpha", 0.5)
         gamma_focal = params_for_model.get("gamma_focal", 2.0)
         criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+        early_stop_args = dict(
+            patience=EARLY_STOP_KWARGS["patience"],
+            min_delta=EARLY_STOP_KWARGS["min_delta"],
+            log_early_stop=EARLY_STOP_LOGGING,
+        )
         for _ in trange(30, desc=f"Runs for {model_name}", leave=False, unit="run"):
             match model_name:
                 case "MLP":
@@ -368,7 +398,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                            data=data,
                                                            train_perf_eval=train_perf_eval,
                                                            val_perf_eval=val_perf_eval,
-                                                           test_perf_eval=test_perf_eval)
+                                                           test_perf_eval=test_perf_eval,
+                                                           **early_stop_args)
                     testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
@@ -397,7 +428,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                            data=data,
                                                            train_perf_eval=train_perf_eval,
                                                            val_perf_eval=val_perf_eval,
-                                                           test_perf_eval=test_perf_eval)
+                                                           test_perf_eval=test_perf_eval,
+                                                           **early_stop_args)
                     testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
@@ -414,7 +446,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                            data=data,
                                                            train_perf_eval=train_perf_eval,
                                                            val_perf_eval=val_perf_eval,
-                                                           test_perf_eval=test_perf_eval)
+                                                           test_perf_eval=test_perf_eval,
+                                                           **early_stop_args)
                     testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
@@ -430,7 +463,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                            data=data,
                                                            train_perf_eval=train_perf_eval,
                                                            val_perf_eval=val_perf_eval,
-                                                           test_perf_eval=test_perf_eval)
+                                                           test_perf_eval=test_perf_eval,
+                                                           **early_stop_args)
                     testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])
@@ -472,7 +506,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
                                                            data=emb_data,
                                                            train_perf_eval=train_perf_eval,
                                                            val_perf_eval=val_perf_eval,
-                                                           test_perf_eval=test_perf_eval)
+                                                           test_perf_eval=test_perf_eval,
+                                                           **early_stop_args)
                     testing_results[model_name]['precision_weighted'].append(test_metrics['precision_weighted'])
                     testing_results[model_name]['precision_illicit'].append(test_metrics['precision_illicit'])
                     testing_results[model_name]['recall_weighted'].append(test_metrics['recall_weighted'])

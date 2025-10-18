@@ -14,6 +14,9 @@ elliptic_dataset = False
 IBM_dataset = True
 Full_run = True
 num_epochs = 200
+early_stop_patience = 60
+early_stop_min_delta = 1e-4
+early_stop_logging = True
 
 
 #%% Quick functions
@@ -101,7 +104,10 @@ if IBM_dataset == True:
 #     val_perf_eval=val_perf_eval,
 #     test_perf_eval=test_perf_eval
 # )
-#%% Testing if the model runs
+
+
+"""" Testing if the model runs
+
 if prototyping == True:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
@@ -112,7 +118,16 @@ if prototyping == True:
     val_perf_eval = val_perf_eval.to(device)
     model_wrapper = ModelWrapper(model, optimizer, criterion)
     #Beginning training
-    metrics, best_f1_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    metrics, best_f1_model_wts, best_f1 = train_and_validate(
+        model_wrapper,
+        data,
+        train_perf_eval,
+        val_perf_eval,
+        num_epochs,
+        patience=early_stop_patience,
+        min_delta=early_stop_min_delta,
+        log_early_stop=early_stop_logging
+    )
     
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -125,7 +140,16 @@ if MLP_prototype == True:
     data = data.to(device)
     train_perf_eval = train_perf_eval.to(device)
     val_perf_eval = val_perf_eval.to(device)
-    metrics, best_f1_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    metrics, best_f1_model_wts, best_f1 = train_and_validate(
+        model_wrapper,
+        data,
+        train_perf_eval,
+        val_perf_eval,
+        num_epochs,
+        patience=early_stop_patience,
+        min_delta=early_stop_min_delta,
+        log_early_stop=early_stop_logging
+    )
 
 if svm_prototype == True: #Toets ander kernel functions, regularisation parameters en gamma values
     from sklearn import svm
@@ -148,7 +172,7 @@ if RF_prototype == True:
     y_pred = rf_model.predict(data.x[val_perf_eval].cpu().numpy())
     val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
     
-#%% Optuna
+ Optuna
 
 def objective(trial, data, train_perf_eval, val_perf_eval):
     #Setting hyperparameters for optuna runs
@@ -165,7 +189,16 @@ def objective(trial, data, train_perf_eval, val_perf_eval):
     
     model_wrapper = ModelWrapper(model, optimizer, criterion)
     
-    metrics, best_model_wts, best_f1 = train_and_validate(model_wrapper, data, train_perf_eval, val_perf_eval, num_epochs)
+    metrics, best_model_wts, best_f1 = train_and_validate(
+        model_wrapper,
+        data,
+        train_perf_eval,
+        val_perf_eval,
+        num_epochs,
+        patience=early_stop_patience,
+        min_delta=early_stop_min_delta,
+        log_early_stop=early_stop_logging
+    )
     
     
     return best_f1
@@ -185,10 +218,11 @@ if parameter_tuning == True:
     print("Best hyperparameters:", study.best_params)
     print("Best value:", study.best_value)
     
-#%% Validation runs
+ Validation runs
 
 def run_multiple_experiments(model_class, data, train_mask, val_mask, test_mask,
-                             criterion, params, num_epochs, num_runs=30):
+                             criterion, params, num_epochs, num_runs=30,
+                             patience=None, min_delta=0.0, log_early_stop=False):
     all_results = {"val_metrics": [],
                    "test_metrics": []
                    }
@@ -205,7 +239,16 @@ def run_multiple_experiments(model_class, data, train_mask, val_mask, test_mask,
         optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"])
         wrapper = ModelWrapper(model, optimizer, criterion)
 
-        history, best_model_wts, best_f1 = train_and_validate(wrapper, data, train_mask, val_mask, num_epochs)
+        history, best_model_wts, best_f1 = train_and_validate(
+            wrapper,
+            data,
+            train_mask,
+            val_mask,
+            num_epochs,
+            patience=patience,
+            min_delta=min_delta,
+            log_early_stop=log_early_stop
+        )
         # Evaluate on test set at the end
         test_loss, test_metrics = wrapper.evaluate(data, test_mask)
 
@@ -228,13 +271,13 @@ if validation_runs == True:
                                            criterion=FocalLoss(gamma=2.5, alpha=0.5, reduction='mean'),
                                            params={"hidden_units": 128, "lr": 0.045},
                                            num_epochs=200,
-                                           num_runs=30)
+                                           num_runs=30,
+                                           patience=early_stop_patience,
+                                           min_delta=early_stop_min_delta,
+                                           log_early_stop=early_stop_logging)
     
 def summarize_and_visualize_results(all_results):
-    """
-    Summarizes and visualizes the results stored in all_results.
-    Expects all_results to be a dict with keys 'val_metrics' and 'test_metrics'.
-    """
+
     import matplotlib.pyplot as plt
 
     # Convert lists to numpy arrays for easier manipulation
@@ -271,7 +314,7 @@ def summarize_and_visualize_results(all_results):
 
     # Example usage after validation runs:
     # summarize_and_visualize_results(all_results)
-    
+     """
 #summarize_and_visualize_results(all_results)
 # %%Final parameter optimisation and testing code
 
@@ -325,7 +368,10 @@ result = run_lstm_embeddings_xgb(
     lstm_hidden_dim=128,
     projection_dim=256,
     warmstart_epochs=20,          # set 0 to skip
-    xgb_params={"tree_method": "hist"}  # use 'gpu_hist' if available
+    xgb_params={"tree_method": "hist"},  # use 'gpu_hist' if available
+    warmstart_patience=5,
+    warmstart_min_delta=1e-3,
+    warmstart_log_early_stop=early_stop_logging
 )
 
 print("VAL:", result["val_metrics"])

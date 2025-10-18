@@ -17,7 +17,10 @@ def pre_train_GIN_encoder(
     wd_encoder=5e-4,      # <- encoder WD
     wd_head=0.0,          # <- head WD (often 0)
     epochs=100,
-    embedding_dim=128
+    embedding_dim=128,
+    patience=None,
+    min_delta=0.0,
+    log_early_stop=False
 ):
     device = data.x.device
 
@@ -47,6 +50,8 @@ def pre_train_GIN_encoder(
 
     best_val_f1 = float('-inf')
     best_encoder_state = copy.deepcopy(encoder.state_dict())
+    epochs_without_improvement = 0
+    best_epoch = -1
 
     for epoch in range(epochs):
         optimizer.zero_grad()
@@ -64,9 +69,15 @@ def pre_train_GIN_encoder(
                 data.y[val_perf_eval].cpu().numpy(),
                 val_pred.cpu().numpy()
             )
-            if val_metrics['f1_illicit'] > best_val_f1:
-                best_val_f1 = val_metrics['f1_illicit']
+            current_val_f1 = val_metrics['f1_illicit']
+            improved = current_val_f1 > (best_val_f1 + min_delta)
+            if improved:
+                best_val_f1 = current_val_f1
                 best_encoder_state = copy.deepcopy(encoder.state_dict())
+                epochs_without_improvement = 0
+                best_epoch = epoch + 1
+            else:
+                epochs_without_improvement += 1
             print(
                 f"Epoch {epoch+1}/{epochs}, "
                 f"Loss: {loss.item():.4f}, "
@@ -74,6 +85,14 @@ def pre_train_GIN_encoder(
                 f"Val illicit F1: {val_metrics['f1_illicit']:.4f}"
             )
             encoder.train(); head.train()
+
+        if patience and epochs_without_improvement >= patience:
+            if log_early_stop:
+                print(
+                    f"Encoder early stopping at epoch {epoch + 1} "
+                    f"(best F1: {best_val_f1:.4f} @ epoch {best_epoch})"
+                )
+            break
 
     encoder.load_state_dict(best_encoder_state)
     encoder.eval()
