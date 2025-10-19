@@ -11,14 +11,23 @@ from xgboost import XGBClassifier
 from tqdm import tqdm, trange
 
 import torch
-models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN']
+models = ['MLP', 'SVM', 'XGB', 'RF', 'GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB']
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-EARLY_STOP_KWARGS = {
-    "patience": 50,
-    "min_delta": 1e-4,
+DEFAULT_EARLY_STOP = {
+    "patience": 20,
+    "min_delta": 1e-3,
 }
 EARLY_STOP_LOGGING = False
+
+
+def _early_stop_args_from(source: dict) -> dict:
+    """Build early stopping kwargs, falling back to defaults when keys are absent."""
+    return {
+        "patience": source.get("early_stop_patience", DEFAULT_EARLY_STOP["patience"]),
+        "min_delta": source.get("early_stop_min_delta", DEFAULT_EARLY_STOP["min_delta"]),
+        "log_early_stop": EARLY_STOP_LOGGING,
+    }
 
 
 def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, val_mask):
@@ -30,6 +39,13 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
     alpha = trial.suggest_float('alpha', 0.1, 1.0)
     gamma_focal = trial.suggest_float('gamma_focal', 2, 5)
     criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+    early_stop_patience = trial.suggest_int('early_stop_patience', 5, 40)
+    early_stop_min_delta = trial.suggest_float('early_stop_min_delta', 1e-4, 5e-3, log=True)
+    trial_early_stop = {
+        "early_stop_patience": early_stop_patience,
+        "early_stop_min_delta": early_stop_min_delta
+    }
+    trial_early_stop_args = _early_stop_args_from(trial_early_stop)
     #Define model and hyperparameters for the trials per selected model.
     if model == 'MLP':
         from models import MLP
@@ -135,8 +151,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             train_perf_eval,
             val_perf_eval,
             num_epochs=200,
-            **EARLY_STOP_KWARGS,
-            log_early_stop=EARLY_STOP_LOGGING
+            **trial_early_stop_args
         )
         return best_f1
     elif model == 'SVM':
@@ -190,8 +205,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             train_perf_eval,
             val_perf_eval,
             num_epochs=200,
-            **EARLY_STOP_KWARGS,
-            log_early_stop=EARLY_STOP_LOGGING
+            **trial_early_stop_args
         )
         if best_f1 is None:
             exit("Best F1 is None, something went wrong during training.")
@@ -210,9 +224,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
             wd_head=0.0,
             epochs=200,
             embedding_dim= embedding_dim,
-            patience=EARLY_STOP_KWARGS["patience"],
-            min_delta=EARLY_STOP_KWARGS["min_delta"],
-            log_early_stop=EARLY_STOP_LOGGING
+            **_early_stop_args_from({})
         )
         encoder.eval()
         with torch.no_grad():
@@ -382,11 +394,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
         alpha = params_for_model.get("alpha", 0.5)
         gamma_focal = params_for_model.get("gamma_focal", 2.0)
         criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
-        early_stop_args = dict(
-            patience=EARLY_STOP_KWARGS["patience"],
-            min_delta=EARLY_STOP_KWARGS["min_delta"],
-            log_early_stop=EARLY_STOP_LOGGING,
-        )
+        early_stop_args = _early_stop_args_from(params_for_model)
         for _ in trange(30, desc=f"Runs for {model_name}", leave=False, unit="run"):
             match model_name:
                 case "MLP":

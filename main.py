@@ -14,7 +14,7 @@ elliptic_dataset = False
 IBM_dataset = True
 Full_run = True
 num_epochs = 200
-early_stop_patience = 60
+early_stop_patience = 80
 early_stop_min_delta = 1e-4
 early_stop_logging = True
 
