@@ -15,14 +15,23 @@ pd.set_option('display.max_columns', None)
 
 class AMLtoGraph(InMemoryDataset):
 
-    def __init__(self, root: str, edge_window_size: int = 10, transform: Optional[Callable] = None, pre_transform: Optional[Callable] = None):
+    def __init__(self, root: str, edge_window_size: int = 10,dataset_type_size: str = 'HISMALL', transform: Optional[Callable] = None, pre_transform: Optional[Callable] = None):
         self.edge_window_size = edge_window_size
         super().__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
     def raw_file_names(self) -> str:
-        return 'HI-Small_Trans.csv'
+        if self.dataset_type_size == 'HISMALL':
+            return 'HI-Small_Trans.csv'
+        elif self.dataset_type_size == 'HIMEDIUM':
+            return 'HI-Medium_Trans.csv'
+        elif self.dataset_type_size == 'LISMALL':
+            return 'LI-Small_Trans.csv'
+        elif self.dataset_type_size == 'LIMEDIUM':
+            return 'LI-Medium_Trans.csv'
+        else:
+            raise ValueError("dataset_type_size must be one of 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'")
 
     @property
     def processed_file_names(self) -> str:

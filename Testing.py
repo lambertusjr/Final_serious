@@ -5,7 +5,7 @@ from encoding import XGBEncoder, make_xgbe_embeddings
 from encoding import pre_train_GIN_encoder
 import torch
 import torch.nn as nn
-from Helper_functions import FocalLoss, calculate_metrics, run_trial_with_cleanup
+from Helper_functions import FocalLoss, calculate_metrics, run_trial_with_cleanup, check_study_existence
 from training_functions import train_and_validate, train_and_test
 from xgboost import XGBClassifier
 from tqdm import tqdm, trange
@@ -260,7 +260,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
 
 from training_functions import train_and_test_NMW_models
 
-def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eval, train_mask, val_mask):
+def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eval, train_mask, val_mask, data_for_optimization):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model_parameters = {
         'MLP': [],
@@ -365,24 +365,30 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
             'f1_illicit': []
         }
     }
+    
     for model_name in tqdm(models, desc="Models", unit="model"):
         n_trials = 50
-        study = optuna.create_study(
-            direction='maximize',
-            study_name=f'{model_name}_optimization',
-            storage='sqlite:///optimization_results.db',
-            load_if_exists=True
-        )
-        with tqdm(total=n_trials, desc=f"{model_name} trials", leave=False, unit="trial") as trial_bar:
-            def _optuna_progress_callback(study, trial):
-                trial_bar.update()
-            study.optimize(
-                lambda trial: run_trial_with_cleanup(
-                    objective, model_name, trial, model_name, data, train_perf_eval, val_perf_eval, train_mask, val_mask
-                ),
-                n_trials=n_trials,
-                callbacks=[_optuna_progress_callback]
+        if check_study_existence(model_name, data_for_optimization):
+            study = optuna.load_study(study_name=f'{model_name}_optimization on {data_for_optimization} dataset', storage='sqlite:///optimization_results.db')
+            model_parameters[model_name].append(study.best_params)
+            params_for_model = study.best_params
+        else:
+            study = optuna.create_study(
+                direction='maximize',
+                study_name=f'{model_name}_optimization on {data_for_optimization} dataset',
+                storage='sqlite:///optimization_results.db',
+                load_if_exists=True
             )
+            with tqdm(total=n_trials, desc=f"{model_name} trials", leave=False, unit="trial") as trial_bar:
+                def _optuna_progress_callback(study, trial):
+                    trial_bar.update()
+                study.optimize(
+                    lambda trial: run_trial_with_cleanup(
+                        objective, model_name, trial, model_name, data, train_perf_eval, val_perf_eval, train_mask, val_mask
+                    ),
+                    n_trials=n_trials,
+                    callbacks=[_optuna_progress_callback]
+                )
 
         print(f"Best hyperparameters for {model_name}:", study.best_params)
         model_parameters[model_name].append(study.best_params)

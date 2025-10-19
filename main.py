@@ -12,6 +12,8 @@ parameter_tuning = False
 validation_runs = False
 elliptic_dataset = False
 IBM_dataset = True
+#Select IBM dataset type/size
+dataset_type_size = 'HISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
 Full_run = True
 num_epochs = 200
 early_stop_patience = 80
@@ -317,7 +319,20 @@ def summarize_and_visualize_results(all_results):
      """
 #summarize_and_visualize_results(all_results)
 # %%Final parameter optimisation and testing code
-
+#variable for dataset used in optimization
+if elliptic_dataset == True:
+    data_for_optimization = 'elliptic'
+elif IBM_dataset == True:
+    if dataset_type_size == 'HISMALL':
+        data_for_optimization = 'IBM_HISMALL'
+    elif dataset_type_size == 'HIMEDIUM':
+        data_for_optimization = 'IBM_HIMEDIUM'
+    elif dataset_type_size == 'LISMALL':
+        data_for_optimization = 'IBM_LISMALL'
+    elif dataset_type_size == 'LIMEDIUM':
+        data_for_optimization = 'IBM_LIMEDIUM'
+        
+        
 if Full_run == True:
     from Testing import run_optimization
 
@@ -328,7 +343,8 @@ if Full_run == True:
                                                 val_perf_eval=val_perf_eval,
                                                 test_perf_eval=test_perf_eval,
                                                 train_mask=train_mask,
-                                                val_mask=val_mask
+                                                val_mask=val_mask,
+                                                data_for_optimization=data_for_optimization
                                                 )
 
 #Save results from optimization
@@ -339,6 +355,12 @@ def save_testing_results_pickle(results, path="testing_results.pkl"):
         pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
         
 save_testing_results_pickle(testing_results, "testing_results.pkl")
+
+def save_testing_results_csv(results, path=f"{data_for_optimization}_testing_results.csv"):
+    df = pd.DataFrame(results)
+    df.to_csv(f"csv_results/{data_for_optimization}_testing_results.csv", index=False)
+
+save_testing_results_csv(testing_results)
 
 #%% Loading in saved results
 import pickle

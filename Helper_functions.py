@@ -99,3 +99,30 @@ def run_trial_with_cleanup(trial_func, model_name, *args, **kwargs):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
+        
+        
+def check_study_existence(model_name, data_for_optimization):
+    """
+    Check if an Optuna study exists for the given model and dataset.
+    
+    Parameters
+    ----------
+    model_name : str
+        Name of the model (MLP, SVM, XGB, RF, GCN, GAT, GIN).
+    data_for_optimization : str
+        Name of the dataset used for optimization.
+        
+    Returns
+    -------
+    exists : bool
+        True if the study exists, False otherwise.
+    """
+    import optuna
+    study_name = f'{model_name}_optimization on {data_for_optimization} dataset'
+    storage_url = 'sqlite:///optimization_results.db'
+    
+    try:
+        study = optuna.load_study(study_name=study_name, storage=storage_url)
+        return True
+    except KeyError:
+        return False
