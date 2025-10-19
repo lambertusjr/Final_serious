@@ -17,6 +17,7 @@ class AMLtoGraph(InMemoryDataset):
 
     def __init__(self, root: str, edge_window_size: int = 10,dataset_type_size: str = 'HISMALL', transform: Optional[Callable] = None, pre_transform: Optional[Callable] = None):
         self.edge_window_size = edge_window_size
+        self.dataset_type_size = dataset_type_size
         super().__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
