@@ -13,7 +13,7 @@ validation_runs = False
 elliptic_dataset = False
 IBM_dataset = True
 #Select IBM dataset type/size
-dataset_type_size = 'HISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
+dataset_type_size = 'LISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
 Full_run = True
 num_epochs = 200
 early_stop_patience = 80
@@ -350,7 +350,7 @@ if Full_run == True:
 #Save results from optimization
 import pickle
 
-def save_testing_results_pickle(results, path="testing_results.pkl"):
+def save_testing_results_pickle(results, path=f"testing_results_{data_for_optimization}.pkl"):
     with open(path, 'wb') as f:
         pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
         
