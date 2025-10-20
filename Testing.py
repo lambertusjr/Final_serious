@@ -367,7 +367,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
     }
     
     for model_name in tqdm(models, desc="Models", unit="model"):
-        n_trials = 50
+        n_trials = 100
         if check_study_existence(model_name, data_for_optimization):
             study = optuna.load_study(study_name=f'{model_name}_optimization on {data_for_optimization} dataset', storage='sqlite:///optimization_results.db')
             model_parameters[model_name].append(study.best_params)
