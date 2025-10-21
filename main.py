@@ -13,7 +13,7 @@ validation_runs = False
 elliptic_dataset = False
 IBM_dataset = True
 #Select IBM dataset type/size
-dataset_type_size = 'LISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
+dataset_type_size = 'HISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
 Full_run = True
 num_epochs = 200
 early_stop_patience = 80
@@ -86,10 +86,10 @@ if elliptic_dataset == True:
 if IBM_dataset == True:
     from stock_IBM_process import AMLtoGraph
     if pc =='Darwin':
-        dataset = AMLtoGraph(root='/Users/lambertusvanzyl/Desktop/Final_serious/data')
+        dataset = AMLtoGraph(root='/Users/lambertusvanzyl/Desktop/Final_serious/data', dataset_type_size=dataset_type_size)
         data: Data = dataset[0]
     else:
-        dataset = AMLtoGraph(root='/Users/Lambertus/Desktop/Final_serious/data')
+        dataset = AMLtoGraph(root='/Users/Lambertus/Desktop/Final_serious/data', dataset_type_size=dataset_type_size)
         data: Data = dataset[0]
     data = data.to('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -337,7 +337,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'],# 'XGB', 'RF',    # Add or remove models as needed
+                                                models=['XGB', 'GIN', 'XGBe+GIN', 'GINe+XGB'],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
@@ -364,7 +364,7 @@ save_testing_results_csv(testing_results)
 
 #%% Loading in saved results
 import pickle
-def load_testing_results_pickle(path="testing_results.pkl"):
+def load_testing_results_pickle(path=f"{data_for_optimization}_testing_results.pkl"):
     with open(path, "rb") as f:
         return pickle.load(f)
     

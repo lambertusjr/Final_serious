@@ -15,7 +15,7 @@ pd.set_option('display.max_columns', None)
 
 class AMLtoGraph(InMemoryDataset):
 
-    def __init__(self, root: str, edge_window_size: int = 10,dataset_type_size: str = 'HISMALL', transform: Optional[Callable] = None, pre_transform: Optional[Callable] = None):
+    def __init__(self, root: str, dataset_type_size: str, edge_window_size: int = 10, transform: Optional[Callable] = None, pre_transform: Optional[Callable] = None):
         self.edge_window_size = edge_window_size
         self.dataset_type_size = dataset_type_size
         super().__init__(root, transform, pre_transform)
@@ -36,7 +36,7 @@ class AMLtoGraph(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> str:
-        return 'data.pt'
+        return f'data_{self.dataset_type_size}.pt'
 
     @property
     def num_nodes(self) -> int:
@@ -94,13 +94,15 @@ class AMLtoGraph(InMemoryDataset):
     def paid_currency_aggregate(self, currency_ls, paying_df, accounts):
         for i in currency_ls:
             temp = paying_df[paying_df['Payment Currency'] == i]
-            accounts['avg paid '+str(i)] = temp['Amount Paid'].groupby(temp['Account']).transform('mean')
+            means = temp.groupby('Account')['Amount Paid'].mean()
+            accounts['avg paid ' + str(i)] = accounts['Account'].map(means)
         return accounts
 
     def received_currency_aggregate(self, currency_ls, receiving_df, accounts):
         for i in currency_ls:
             temp = receiving_df[receiving_df['Receiving Currency'] == i]
-            accounts['avg received '+str(i)] = temp['Amount Received'].groupby(temp['Account']).transform('mean')
+            means = temp.groupby('Account')['Amount Received'].mean()
+            accounts['avg received ' + str(i)] = accounts['Account'].map(means)
         accounts = accounts.fillna(0)
         return accounts
 

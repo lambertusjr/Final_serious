@@ -10,6 +10,7 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 from Helper_functions import calculate_metrics
 from models import ModelWrapper, MLP
@@ -133,29 +134,53 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             degree = params_for_model.get("degree", 3)
             kernel = params_for_model.get("kernel", 'rbf')
             svm_model = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree)
-            train_perf_eval = val_perf_eval #Combining to increase available training data
-            svm_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
-            pred = svm_model.predict(data.x[test_perf_eval].cpu().numpy())
-            metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
+            combined_mask = train_perf_eval | val_perf_eval
+            x_train = data.x[combined_mask].detach().cpu().numpy()
+            y_train = data.y[combined_mask].detach().cpu().numpy()
+            x_test = data.x[test_perf_eval].detach().cpu().numpy()
+            y_test = data.y[test_perf_eval].detach().cpu().numpy()
+            scaler = StandardScaler()
+            x_train = scaler.fit_transform(x_train)
+            x_test = scaler.transform(x_test)
+            svm_model.fit(x_train, y_train)
+            pred = svm_model.predict(x_test)
+            metrics = calculate_metrics(y_test, pred)
             return metrics
         case "RF":
             n_estimators = params_for_model.get("n_estimators", 100)
             max_depth = params_for_model.get("max_depth", 10)
             rf_model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, class_weight='balanced')
-            train_perf_eval = val_perf_eval #Combining to increase available training data
-            rf_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
-            pred = rf_model.predict(data.x[test_perf_eval].cpu().numpy())
-            metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
+            combined_mask = train_perf_eval | val_perf_eval
+            x_train = data.x[combined_mask].detach().cpu().numpy()
+            y_train = data.y[combined_mask].detach().cpu().numpy()
+            x_test = data.x[test_perf_eval].detach().cpu().numpy()
+            y_test = data.y[test_perf_eval].detach().cpu().numpy()
+            scaler = StandardScaler()
+            x_train = scaler.fit_transform(x_train)
+            x_test = scaler.transform(x_test)
+            rf_model.fit(x_train, y_train)
+            pred = rf_model.predict(x_test)
+            metrics = calculate_metrics(y_test, pred)
             return metrics
         case "XGB":
             from xgboost import XGBClassifier
             max_depth = params_for_model.get("max_depth", 10)
             n_estimators = params_for_model.get("n_estimators", 100)
-            xgb_model = XGBClassifier(max_depth=max_depth, n_estimators=n_estimators, scale_pos_weight=0.108)
-            train_perf_eval = val_perf_eval #Combining to increase available training data
-            xgb_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
-            pred = xgb_model.predict(data.x[test_perf_eval].cpu().numpy())
-            metrics = calculate_metrics(data.y[test_perf_eval].cpu().numpy(), pred)
+            combined_mask = train_perf_eval | val_perf_eval
+            x_train = data.x[combined_mask].detach().cpu().numpy()
+            y_train = data.y[combined_mask].detach().cpu().numpy()
+            x_test = data.x[test_perf_eval].detach().cpu().numpy()
+            y_test = data.y[test_perf_eval].detach().cpu().numpy()
+            scaler = StandardScaler()
+            x_train = scaler.fit_transform(x_train)
+            x_test = scaler.transform(x_test)
+            pos = (y_train == 1).sum()
+            neg = (y_train == 0).sum()
+            scale_pos_weight = float(neg) / max(1.0, float(pos))
+            xgb_model = XGBClassifier(max_depth=max_depth, n_estimators=n_estimators, scale_pos_weight=scale_pos_weight)
+            xgb_model.fit(x_train, y_train)
+            pred = xgb_model.predict(x_test)
+            metrics = calculate_metrics(y_test, pred)
             return metrics
 from torch_geometric.data import Data
 
