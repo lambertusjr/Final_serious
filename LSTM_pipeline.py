@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from typing import Dict, Optional, Tuple
 from xgboost import XGBClassifier
 
-from Helper_functions import FocalLoss, calculate_metrics
+from Helper_functions import FocalLoss, calculate_metrics, balanced_class_weights
 
 
 class LSTMEncoder(nn.Module):
@@ -130,7 +130,7 @@ def run_lstm_embeddings_xgb(
     warmstart_epochs: int = 20,       # 0 to disable warm-start
     warmstart_lr: float = 1e-3,
     warmstart_weight_decay: float = 5e-4,
-    focal_alpha: float = 0.5,
+    focal_alpha: Optional[float] = None,
     focal_gamma: float = 2.5,
     xgb_params: Optional[Dict] = None,
     random_state: int = 42,
@@ -153,6 +153,9 @@ def run_lstm_embeddings_xgb(
     train_perf_eval = train_perf_eval.to(device)
     val_perf_eval = val_perf_eval.to(device)
     test_perf_eval = test_perf_eval.to(device)
+
+    if focal_alpha is None:
+        focal_alpha = balanced_class_weights(data.y[train_perf_eval])
 
     # 1) Node order + sequence tensor
     node_ids_ordered = _infer_node_order(features_df, data)

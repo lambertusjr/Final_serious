@@ -1,5 +1,5 @@
 from models import GINEncoder
-from Helper_functions import FocalLoss
+from Helper_functions import FocalLoss, balanced_class_weights
 from Helper_functions import calculate_metrics
 import copy
 import torch
@@ -44,7 +44,8 @@ def pre_train_GIN_encoder(
         ]
     )
 
-    criterion = FocalLoss(alpha=0.5, gamma=2.5, reduction='mean')
+    alpha_weights = balanced_class_weights(data.y[train_perf_eval])
+    criterion = FocalLoss(alpha=alpha_weights, gamma=2.5, reduction='mean')
 
     encoder.train(); head.train()
 
@@ -284,3 +285,256 @@ def make_xgbe_embeddings(
     ).to(device)
 
     return emb_data
+
+
+import math
+from typing import Optional, Tuple, List, Dict
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.data import Data
+from torch_geometric.nn import TransformerConv
+from torch_geometric.utils import to_undirected
+import networkx as nx
+
+
+# -----------------------------
+# Positional / bias encodings
+# -----------------------------
+def sinusoidal_time_encoding(delta_t: torch.Tensor, dim: int) -> torch.Tensor:
+    """
+    delta_t: [E] (edge-relative time, e.g., seconds since t_ref; can be negative)
+    Returns: [E, dim] sinusoidal features (no learnable params).
+    """
+    # Map time to [0, +] by absolute or scaled shift; here we keep sign and scale.
+    # Normalise to seconds -> days if your timestamps are large; adapt as needed.
+    # Small epsilon to avoid inf in later divisions:
+    x = delta_t.view(-1, 1)  # [E,1]
+    # Frequency bands:
+    i = torch.arange(dim, device=delta_t.device, dtype=torch.float32).view(1, -1)
+    denom = torch.pow(10000.0, (2 * (i // 2)) / dim)  # classic Transformer scaling
+    z = x / denom
+    enc = torch.empty(x.size(0), dim, device=delta_t.device, dtype=torch.float32)
+    enc[:, 0::2] = torch.sin(z[:, 0::2])
+    enc[:, 1::2] = torch.cos(z[:, 1::2])
+    return enc
+
+
+def spd_encoding(edge_index: torch.Tensor, num_nodes: int, K: int) -> torch.Tensor:
+    """
+    Shortest-path distance (SPD) clipped at K, for edges; returns an integer code per edge.
+    For efficiency we compute distances via BFS on an nx graph once, then index per edge.
+    """
+    ei = edge_index
+    G = nx.Graph()
+    G.add_nodes_from(range(num_nodes))
+    edges = ei.t().tolist()
+    G.add_edges_from(edges)
+
+    # Precompute all-pairs shortest path up to K using multi-source BFS per node:
+    # We'll store SPD(u,v) for edges only, which is cheap:
+    spd = []
+    for u, v in edges:
+        try:
+            d = nx.shortest_path_length(G, u, v)
+        except nx.NetworkXNoPath:
+            d = K + 1
+        spd.append(min(d, K))
+    return torch.tensor(spd, dtype=torch.long, device=edge_index.device)
+
+
+# -----------------------------
+# Temporal-union builder
+# -----------------------------
+def build_temporal_union(
+    data_by_time: Dict[int, Data],
+    t_ref: int,
+    window: Tuple[int, int]
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Merge snapshots within [t_ref - window[0], t_ref + window[1]] into a union graph.
+
+    Args:
+      data_by_time: mapping {t: Data} where Data.edge_index are the edges at time t
+      t_ref:       reference time step we are embedding for
+      window:      (past, future) inclusive hops in time units of keys in data_by_time
+
+    Returns:
+      edge_index [2,E_union], edge_time [E_union] with relative time (t_edge - t_ref)
+    """
+    ts = []
+    for t, d in data_by_time.items():
+        if (t_ref - window[0]) <= t <= (t_ref + window[1]):
+            ei = d.edge_index
+            E = ei.size(1)
+            ts.append((
+                ei, torch.full((E,), fill_value=(t - t_ref), dtype=torch.long, device=ei.device)
+            ))
+
+    if not ts:
+        # Fallback: empty graph
+        return (torch.empty(2, 0, dtype=torch.long), torch.empty(0, dtype=torch.long))
+
+    eis, rels = zip(*ts)
+    edge_index = torch.cat(eis, dim=1)
+    edge_time = torch.cat(rels, dim=0)
+
+    # (Optional) deduplicate multi-edges by concatenation; here we keep all edges (attention can handle duplicates).
+    edge_index = to_undirected(edge_index)  # if your graph is directed, remove this.
+    return edge_index, edge_time
+
+
+# -----------------------------
+# DGT-style Transformer encoder
+# -----------------------------
+class DGTEncoder(nn.Module):
+    """
+    Dynamic Graph Transformer encoder producing node embeddings.
+    - Spatial bias: shortest-path distance (SPD) buckets up to K.
+    - Temporal bias: sinusoidal encoding of relative edge time.
+    - Backbone: PyG TransformerConv with additive attention bias.
+
+    API:
+      forward(data, t_ref=None, window=None, data_by_time=None, edge_time=None)
+        -> embeddings [N, embedding_dim]
+    """
+    def __init__(
+        self,
+        num_node_features: int,
+        embedding_dim: int = 128,
+        hidden_dim: int = 256,
+        num_layers: int = 3,
+        heads: int = 4,
+        dropout: float = 0.2,
+        spd_K: int = 4,
+        time_bias_dim: int = 16,
+        spd_bias_dim: int = 16
+    ):
+        super().__init__()
+        self.emb_in = nn.Linear(num_node_features, hidden_dim)
+
+        self.time_bias_dim = time_bias_dim
+        self.spd_K = spd_K
+
+        # Learnable embeddings for SPD buckets [0..K] plus "no-path" bucket (K+1)
+        self.spd_bias = nn.Embedding(spd_K + 2, spd_bias_dim)
+
+        # Project concatenated biases to per-head additive bias
+        self.bias_mlp = nn.Sequential(
+            nn.Linear(time_bias_dim + spd_bias_dim, heads),
+        )
+
+        self.layers = nn.ModuleList([
+            TransformerConv(
+                in_channels=hidden_dim,
+                out_channels=hidden_dim // heads,
+                heads=heads,
+                dropout=dropout,
+                beta=True,          # allow residual attention weighting
+                edge_dim=heads,     # pass per-head additive bias via edge_attr
+            ) for _ in range(num_layers)
+        ])
+        self.norms = nn.ModuleList([nn.LayerNorm(hidden_dim) for _ in range(num_layers)])
+        self.final = nn.Sequential(
+            nn.Linear(hidden_dim, embedding_dim),
+            nn.Dropout(dropout),
+        )
+
+    def _edge_bias(
+        self,
+        edge_index: torch.Tensor,
+        edge_time: torch.Tensor,
+        num_nodes: int
+    ) -> torch.Tensor:
+        """
+        Compute per-edge, per-head additive attention bias.
+        Returns edge_attr with shape [E, heads].
+        """
+        # Temporal encoding:
+        time_enc = sinusoidal_time_encoding(edge_time.float(), self.time_bias_dim)  # [E, Tdim]
+
+        # Spatial encoding via SPD buckets (computed on the union graph):
+        spd = spd_encoding(edge_index, num_nodes=num_nodes, K=self.spd_K)          # [E]
+        spd_enc = self.spd_bias(spd)                                                # [E, Sdim]
+
+        bias = torch.cat([time_enc, spd_enc], dim=-1)                               # [E, T+S]
+        edge_attr = self.bias_mlp(bias)                                             # [E, heads]
+        return edge_attr
+
+    def forward(
+        self,
+        data: Data,
+        *,
+        t_ref: Optional[int] = None,
+        window: Optional[Tuple[int, int]] = None,
+        data_by_time: Optional[Dict[int, Data]] = None,
+        edge_time: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Two usage modes:
+          (A) Snapshot/union mode (recommended for dynamic): supply t_ref, window, data_by_time.
+              The method will build a temporal-union edge_index and relative edge_time internally.
+          (B) Pre-built mode: supply data.edge_index and edge_time directly (for a given union graph).
+
+        Returns:
+          X_emb: [N, embedding_dim]
+        """
+        x = self.emb_in(data.x)  # [N, H]
+        N = data.num_nodes
+
+        if (t_ref is not None) and (window is not None) and (data_by_time is not None):
+            edge_index, rel_t = build_temporal_union(data_by_time, t_ref, window)
+        else:
+            edge_index = data.edge_index
+            if edge_time is None:
+                # default zero time bias if not provided
+                rel_t = torch.zeros(edge_index.size(1), dtype=torch.long, device=edge_index.device)
+            else:
+                rel_t = edge_time
+
+        edge_attr = self._edge_bias(edge_index, rel_t, num_nodes=N)  # [E, heads]
+
+        h = x
+        for conv, ln in zip(self.layers, self.norms):
+            h_new = conv(h, edge_index, edge_attr=edge_attr)
+            h = ln(h + h_new)
+            h = F.gelu(h)
+
+        z = self.final(h)  # [N, embedding_dim]
+        # (Optional) normalise embeddings:
+        z = F.normalize(z, p=2, dim=-1)
+        return z
+
+
+# -----------------------------
+# Convenience wrapper
+# -----------------------------
+@torch.no_grad()
+def make_dgt_embeddings(
+    encoder: DGTEncoder,
+    data: Data,
+    *,
+    t_ref: Optional[int] = None,
+    window: Optional[Tuple[int, int]] = None,
+    data_by_time: Optional[Dict[int, Data]] = None,
+    edge_time: Optional[torch.Tensor] = None,
+) -> Data:
+    """
+    Produces a new Data object with x = DGT embeddings, preserving edge_index, y, num_nodes.
+    If you use dynamic graphs: pass t_ref, window, and data_by_time (mode A).
+    If you already have a union graph with per-edge relative times: pass edge_time (mode B).
+    """
+    z = encoder(
+        data,
+        t_ref=t_ref,
+        window=window,
+        data_by_time=data_by_time,
+        edge_time=edge_time
+    )
+    return Data(
+        x=z.to(data.x.device),
+        edge_index=data.edge_index,
+        y=getattr(data, "y", None),
+        num_nodes=data.num_nodes
+    ).to(data.x.device)

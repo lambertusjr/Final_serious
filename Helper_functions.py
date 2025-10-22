@@ -1,4 +1,11 @@
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
+from sklearn.metrics import (
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report,
+    ConfusionMatrixDisplay,
+)
 import numpy as np
 import torch
 import gc
@@ -27,31 +34,68 @@ def calculate_metrics(y_true, y_pred):
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def balanced_class_weights(labels: torch.Tensor, num_classes: int = 2) -> torch.Tensor:
+    """
+    Compute inverse-frequency class weights (sum to 1) for 1-D integer labels.
+
+    Unlabelled entries (label < 0) are ignored.
+    """
+    if labels.ndim != 1:
+        labels = labels.view(-1)
+    labels = labels.detach()
+    valid = labels >= 0
+    if not torch.any(valid):
+        return torch.ones(num_classes, dtype=torch.float32) / float(num_classes)
+    filtered = labels[valid].to(torch.long).cpu()
+    counts = torch.bincount(filtered, minlength=num_classes).clamp_min(1)
+    inv = (1.0 / counts.float())
+    inv = inv / inv.sum()
+    return inv
+
+
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
         super(FocalLoss, self).__init__()
-        if isinstance(alpha, (list, tuple, torch.Tensor)):
-            self.alpha = torch.tensor(alpha, dtype=torch.float32)
+        if alpha is None:
+            self.alpha = None
+        elif isinstance(alpha, (float, int)):
+            alpha_val = float(alpha)
+            if not (0.0 <= alpha_val <= 1.0):
+                raise ValueError("alpha float must lie in [0, 1]")
+            self.alpha = torch.tensor([alpha_val, 1.0 - alpha_val], dtype=torch.float32)
+        elif isinstance(alpha, (list, tuple, torch.Tensor)):
+            self.alpha = torch.as_tensor(alpha, dtype=torch.float32)
         else:
-            self.alpha = alpha  # keep as float
+            raise TypeError("alpha must be None, float, sequence, or torch.Tensor")
+
+        if isinstance(self.alpha, torch.Tensor):
+            if self.alpha.ndim != 1:
+                raise ValueError("alpha tensor must be 1-dimensional")
+            if torch.any(self.alpha < 0):
+                raise ValueError("alpha tensor must be non-negative")
+            if self.alpha.sum() == 0:
+                raise ValueError("alpha tensor must have positive sum")
+            self.alpha = self.alpha / self.alpha.sum()
+
         self.gamma = gamma
         self.reduction = reduction
 
     def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+        logits = inputs.float()
+        targets = targets.long()
+        with torch.cuda.amp.autocast(enabled=False):
+            ce_loss = F.cross_entropy(logits, targets, reduction='none')
         pt = torch.exp(-ce_loss)  # prob of the true class
 
         focal_loss = (1 - pt) ** self.gamma * ce_loss
 
         # Apply alpha correctly depending on type
         if self.alpha is not None:
-            if isinstance(self.alpha, torch.Tensor):  
-                if self.alpha.device != inputs.device:
-                    self.alpha = self.alpha.to(inputs.device)
-                at = self.alpha[targets]  # per-class weights
-                focal_loss = at * focal_loss
-            else:  
-                focal_loss = self.alpha * focal_loss  # float case
+            alpha = self.alpha.to(inputs.device)
+            at = alpha[targets]  # per-class weights
+            focal_loss = at * focal_loss
 
         if self.reduction == 'mean':
             return focal_loss.mean()

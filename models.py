@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, GATConv, GINConv
-from Helper_functions import calculate_metrics
+from Helper_functions import calculate_metrics, FocalLoss
 
 try:
     from torch.amp import autocast as _torch_autocast
@@ -101,7 +101,10 @@ class ModelWrapper:
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
-        enable_amp = torch.cuda.is_available() if use_amp is None else bool(use_amp)
+        if use_amp is None:
+            enable_amp = torch.cuda.is_available() and not isinstance(criterion, FocalLoss)
+        else:
+            enable_amp = bool(use_amp)
         self._use_amp = enable_amp
         self._scaler = _make_scaler(enabled=self._use_amp)
         
@@ -180,5 +183,4 @@ class GINEncoder(nn.Module):
     def embed(self, data):
         self.eval()
         return self.forward(data)
-
 

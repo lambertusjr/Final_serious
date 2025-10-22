@@ -60,6 +60,8 @@ from torch import Tensor
 from torch_geometric.data import Data, DataLoader
 from torch_geometric.utils import to_networkx
 from torch_geometric.nn import GCNConv, GATConv, GINConv, global_add_pool
+import torch_geometric_temporal
+from torch_geometric_temporal.nn.recurrent import EvolveGCNH, EvolveGCNO
 
 #Importing sklearn libraries
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
@@ -71,8 +73,9 @@ from pre_processing import elliptic_pre_processing, create_data_object, create_e
 from debugging import print_tensor_info
 from models import GCN, ModelWrapper, MLP
 from training_functions import train_and_validate
-from Helper_functions import FocalLoss, calculate_metrics
+from Helper_functions import FocalLoss, calculate_metrics, balanced_class_weights
 from analysis import results_to_long_df, summarise_long_df, formatted_wide_table, produce_tables, boxplots_by_metric, bar_means_with_ci
+from encoding import DGTEncoder
 #%% Getting data ready for models
 from pre_processing import make_ibm_masks
 if elliptic_dataset == True:
@@ -97,7 +100,9 @@ if IBM_dataset == True:
     
     train_mask, val_mask, test_mask, train_perf_eval, val_perf_eval, test_perf_eval = make_ibm_masks(data)
     
-    
+#%% Feature engineering
+
+
 # print_tensor_info(
 #     train_mask=train_mask,
 #     val_mask=val_mask,
@@ -108,215 +113,7 @@ if IBM_dataset == True:
 # )
 
 
-"""" Testing if the model runs
 
-if prototyping == True:
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.05, weight_decay=5e-4)
-    criterion = nn.CrossEntropyLoss()
-    data = data.to(device)
-    train_perf_eval = train_perf_eval.to(device)
-    val_perf_eval = val_perf_eval.to(device)
-    model_wrapper = ModelWrapper(model, optimizer, criterion)
-    #Beginning training
-    metrics, best_f1_model_wts, best_f1 = train_and_validate(
-        model_wrapper,
-        data,
-        train_perf_eval,
-        val_perf_eval,
-        num_epochs,
-        patience=early_stop_patience,
-        min_delta=early_stop_min_delta,
-        log_early_stop=early_stop_logging
-    )
-    
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-if MLP_prototype == True:
-    model = MLP(num_node_features=data.num_features, num_classes=2, hidden_units=64).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.05, weight_decay=5e-4)
-    criterion = nn.CrossEntropyLoss()
-    model_wrapper = ModelWrapper(model, optimizer, criterion)
-    
-    data = data.to(device)
-    train_perf_eval = train_perf_eval.to(device)
-    val_perf_eval = val_perf_eval.to(device)
-    metrics, best_f1_model_wts, best_f1 = train_and_validate(
-        model_wrapper,
-        data,
-        train_perf_eval,
-        val_perf_eval,
-        num_epochs,
-        patience=early_stop_patience,
-        min_delta=early_stop_min_delta,
-        log_early_stop=early_stop_logging
-    )
-
-if svm_prototype == True: #Toets ander kernel functions, regularisation parameters en gamma values
-    from sklearn import svm
-    clf = svm.SVC(kernel='linear', C=1.0)
-    clf.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
-    y_pred = clf.predict(data.x[val_perf_eval].cpu().numpy())
-    val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
-    
-if XGB_prototype == True:
-    from xgboost import XGBClassifier
-    xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', scale_pos_weight=9.25, learning_rate=0.1, max_depth=6, n_estimators=100, colsample_bytree=0.7)
-    xgb_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
-    y_pred = xgb_model.predict(data.x[val_perf_eval].cpu().numpy())
-    val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
-    
-if RF_prototype == True:
-    from sklearn.ensemble import RandomForestClassifier
-    rf_model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
-    rf_model.fit(data.x[train_perf_eval].cpu().numpy(), data.y[train_perf_eval].cpu().numpy())
-    y_pred = rf_model.predict(data.x[val_perf_eval].cpu().numpy())
-    val_metrics = calculate_metrics(data.y[val_perf_eval].cpu().numpy(), y_pred)
-    
- Optuna
-
-def objective(trial, data, train_perf_eval, val_perf_eval):
-    #Setting hyperparameters for optuna runs
-    hidden_units = trial.suggest_categorical("hidden_units", [16, 32, 48, 64, 128])
-    learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-1, log=True)
-    weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
-    
-    alpha = trial.suggest_float("alpha", 0.2, 0.7)
-    gamma = trial.suggest_float("gamma", 2.0, 5.0)
-    criterion = FocalLoss(alpha=alpha, gamma=gamma, reduction='mean')
-    
-    model = GCN(num_node_features=data.num_features, num_classes=2, hidden_units=hidden_units).to('cuda' if torch.cuda.is_available() else 'cpu')
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    
-    model_wrapper = ModelWrapper(model, optimizer, criterion)
-    
-    metrics, best_model_wts, best_f1 = train_and_validate(
-        model_wrapper,
-        data,
-        train_perf_eval,
-        val_perf_eval,
-        num_epochs,
-        patience=early_stop_patience,
-        min_delta=early_stop_min_delta,
-        log_early_stop=early_stop_logging
-    )
-    
-    
-    return best_f1
-
-if parameter_tuning == True:
-    import optuna
-    import numpy as np
-    #criterion = nn.CrossEntropyLoss()
-    
-    study = optuna.create_study(
-        direction="maximize",
-        study_name="GCN Hyperparameter Optimization",
-        storage="sqlite:///db.sqlite3",
-        load_if_exists=True)
-    
-    study.optimize(lambda trial: objective(trial, data, train_perf_eval, val_perf_eval), n_trials=200)
-    print("Best hyperparameters:", study.best_params)
-    print("Best value:", study.best_value)
-    
- Validation runs
-
-def run_multiple_experiments(model_class, data, train_mask, val_mask, test_mask,
-                             criterion, params, num_epochs, num_runs=30,
-                             patience=None, min_delta=0.0, log_early_stop=False):
-    all_results = {"val_metrics": [],
-                   "test_metrics": []
-                   }
-
-    device = data.x.device
-    
-    for run in range(num_runs):  # ensures reproducibility but still varied across runs
-        print(f"Run {run + 1}/{num_runs}")
-        model = model_class(
-            num_node_features=data.num_features,
-            num_classes=2,
-            hidden_units=params["hidden_units"]
-        ).to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"])
-        wrapper = ModelWrapper(model, optimizer, criterion)
-
-        history, best_model_wts, best_f1 = train_and_validate(
-            wrapper,
-            data,
-            train_mask,
-            val_mask,
-            num_epochs,
-            patience=patience,
-            min_delta=min_delta,
-            log_early_stop=log_early_stop
-        )
-        # Evaluate on test set at the end
-        test_loss, test_metrics = wrapper.evaluate(data, test_mask)
-
-        all_results["val_metrics"].append(history["f1_illicit"][-1])
-        all_results["test_metrics"].append(test_metrics)
-
-    return all_results
-
-#Moving variables to cuda device
-train_perf_eval = train_perf_eval.to(data.x.device)
-val_perf_eval = val_perf_eval.to(data.x.device)
-test_perf_eval = test_perf_eval.to(data.x.device)
-
-if validation_runs == True:
-    all_results = run_multiple_experiments(model_class=GCN,
-                                           data=data,
-                                           train_mask=train_perf_eval,
-                                           val_mask = val_perf_eval,
-                                           test_mask= test_perf_eval,
-                                           criterion=FocalLoss(gamma=2.5, alpha=0.5, reduction='mean'),
-                                           params={"hidden_units": 128, "lr": 0.045},
-                                           num_epochs=200,
-                                           num_runs=30,
-                                           patience=early_stop_patience,
-                                           min_delta=early_stop_min_delta,
-                                           log_early_stop=early_stop_logging)
-    
-def summarize_and_visualize_results(all_results):
-
-    import matplotlib.pyplot as plt
-
-    # Convert lists to numpy arrays for easier manipulation
-    val_f1_scores = np.array(all_results["val_metrics"])
-    test_metrics = all_results["test_metrics"]
-
-    # Extract F1, Precision, Recall for test set
-    test_f1 = np.array([m["f1_illicit"] for m in test_metrics])
-    test_precision = np.array([m["precision_illicit"] for m in test_metrics])
-    test_recall = np.array([m["recall_illicit"] for m in test_metrics])
-
-    print("Validation F1: Mean = {:.4f}, Std = {:.4f}".format(val_f1_scores.mean(), val_f1_scores.std()))
-    print("Test F1:        Mean = {:.4f}, Std = {:.4f}".format(test_f1.mean(), test_f1.std()))
-    print("Test Precision: Mean = {:.4f}, Std = {:.4f}".format(test_precision.mean(), test_precision.std()))
-    print("Test Recall:    Mean = {:.4f}, Std = {:.4f}".format(test_recall.mean(), test_recall.std()))
-
-    # Visualization
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 3, 1)
-    plt.boxplot(val_f1_scores)
-    plt.title("Validation F1")
-    plt.ylabel("F1 Score")
-
-    plt.subplot(1, 3, 2)
-    plt.boxplot(test_f1)
-    plt.title("Test F1")
-
-    plt.subplot(1, 3, 3)
-    plt.boxplot([test_precision, test_recall], labels=["Precision", "Recall"])
-    plt.title("Test Precision & Recall")
-
-    plt.tight_layout()
-    plt.show()
-
-    # Example usage after validation runs:
-    # summarize_and_visualize_results(all_results)
-     """
 #summarize_and_visualize_results(all_results)
 # %%Final parameter optimisation and testing code
 #variable for dataset used in optimization
@@ -337,7 +134,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['XGB', 'GIN', 'XGBe+GIN', 'GINe+XGB'],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
+                                                models=['XGB', 'GINe+XGB'],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
@@ -377,7 +174,7 @@ boxplots_by_metric(df_long)
 bar_means_with_ci(df_summary, metric="f1_illicit")
 
 # %% LSTM temporary pipeline
-
+"""
 from LSTM_pipeline import run_lstm_embeddings_xgb
 
 result = run_lstm_embeddings_xgb(
@@ -399,3 +196,107 @@ result = run_lstm_embeddings_xgb(
 print("VAL:", result["val_metrics"])
 print("TEST:", result["test_metrics"])
 # embeddings available as result["embeddings"]
+"""
+
+#%% Testing if DGT works
+DGT_prototype = True
+
+if DGT_prototype:
+    dgt_device = torch.device("cpu")
+
+    class DGTClassifier(nn.Module):
+        def __init__(
+            self,
+            num_node_features: int,
+            num_classes: int,
+            embedding_dim: int = 128,
+            hidden_dim: int = 256,
+            num_layers: int = 3,
+            heads: int = 4,
+            dropout: float = 0.2,
+            spd_K: int = 4
+        ):
+            super().__init__()
+            self.encoder = DGTEncoder(
+                num_node_features=num_node_features,
+                embedding_dim=embedding_dim,
+                hidden_dim=hidden_dim,
+                num_layers=num_layers,
+                heads=heads,
+                dropout=dropout,
+                spd_K=spd_K
+            ).to(dgt_device)
+            self.head = nn.Linear(embedding_dim, num_classes).to(dgt_device)
+
+        def forward(self, graph: Data) -> torch.Tensor:
+            z = self.encoder(graph)
+            return self.head(z)
+
+    dgt_data = Data(
+        x=data.x.detach().cpu(),
+        edge_index=data.edge_index.detach().cpu(),
+        y=data.y.detach().cpu(),
+        num_nodes=data.num_nodes
+    )
+
+    dgt_train_mask = train_perf_eval.detach().cpu()
+    dgt_val_mask = val_perf_eval.detach().cpu()
+    dgt_test_mask = test_perf_eval.detach().cpu()
+
+    dgt_alpha = balanced_class_weights(dgt_data.y[dgt_train_mask])
+    dgt_model = DGTClassifier(num_node_features=dgt_data.num_features, num_classes=2).to(dgt_device)
+    dgt_optimizer = torch.optim.Adam(dgt_model.parameters(), lr=5e-3, weight_decay=5e-4)
+    dgt_criterion = FocalLoss(alpha=dgt_alpha, gamma=2.5, reduction='mean')
+    dgt_wrapper = ModelWrapper(dgt_model, dgt_optimizer, dgt_criterion, use_amp=False)
+
+    dgt_metrics, dgt_best_wts, dgt_best_f1 = train_and_validate(
+        dgt_wrapper,
+        dgt_data,
+        dgt_train_mask,
+        dgt_val_mask,
+        num_epochs,
+        patience=early_stop_patience,
+        min_delta=early_stop_min_delta,
+        log_early_stop=early_stop_logging
+    )
+
+    if dgt_best_wts is not None:
+        dgt_wrapper.model.load_state_dict(dgt_best_wts)
+
+    _, dgt_test_metrics = dgt_wrapper.evaluate(dgt_data, dgt_test_mask)
+
+    dgt_last_val_f1 = float('nan')
+    if dgt_metrics['f1_illicit']:
+        dgt_last_val_f1 = dgt_metrics['f1_illicit'][-1]
+
+    print(f"DGT validation F1 (last epoch): {dgt_last_val_f1:.4f}")
+    print(f"DGT best validation F1: {dgt_best_f1:.4f}")
+    print(f"DGT test metrics: {dgt_test_metrics}")
+
+    with torch.no_grad():
+        dgt_embeddings = dgt_wrapper.model.encoder(dgt_data)
+
+    dgt_embeddings = dgt_embeddings.to(data.x.device)
+    dgt_embedded_data = Data(
+        x=dgt_embeddings,
+        edge_index=data.edge_index,
+        y=data.y,
+        num_nodes=data.num_nodes
+    ).to(data.x.device)
+
+    dgt_embedded_train_mask = dgt_train_mask.to(data.x.device)
+    dgt_embedded_val_mask = dgt_val_mask.to(data.x.device)
+    dgt_embedded_test_mask = dgt_test_mask.to(data.x.device)
+
+    dgt_embedded_data.train_mask = dgt_embedded_train_mask
+    dgt_embedded_data.val_mask = dgt_embedded_val_mask
+    dgt_embedded_data.test_mask = dgt_embedded_test_mask
+
+    dgt_prototype_results = {
+        "history": dgt_metrics,
+        "best_val_f1": dgt_best_f1,
+        "test_metrics": dgt_test_metrics,
+        "embedded_data": dgt_embedded_data
+    }
+
+# %%EvolveGCN temporary pipeline

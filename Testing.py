@@ -5,7 +5,13 @@ from encoding import XGBEncoder, make_xgbe_embeddings
 from encoding import pre_train_GIN_encoder
 import torch
 import torch.nn as nn
-from Helper_functions import FocalLoss, calculate_metrics, run_trial_with_cleanup, check_study_existence
+from Helper_functions import (
+    FocalLoss,
+    calculate_metrics,
+    run_trial_with_cleanup,
+    check_study_existence,
+    balanced_class_weights,
+)
 from training_functions import train_and_validate, train_and_test
 from xgboost import XGBClassifier
 from tqdm import tqdm, trange
@@ -33,12 +39,12 @@ def _early_stop_args_from(source: dict) -> dict:
 def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, val_mask):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     hidden_units = trial.suggest_int('hidden_units', 32, 256)
-    learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+    learning_rate = trial.suggest_float('learning_rate', 5e-5, 5e-3, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-2, log=True)
     
-    alpha = trial.suggest_float('alpha', 0.1, 1.0)
     gamma_focal = trial.suggest_float('gamma_focal', 2, 5)
-    criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+    alpha_weights = balanced_class_weights(data.y[train_perf_eval])
+    criterion = FocalLoss(alpha=alpha_weights, gamma=gamma_focal)
     early_stop_patience = trial.suggest_int('early_stop_patience', 5, 40)
     early_stop_min_delta = trial.suggest_float('early_stop_min_delta', 1e-4, 5e-3, log=True)
     trial_early_stop = {
@@ -366,6 +372,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
         }
     }
     
+    focal_alpha = balanced_class_weights(data.y[train_perf_eval])
+
     for model_name in tqdm(models, desc="Models", unit="model"):
         n_trials = 100
         if check_study_existence(model_name, data_for_optimization):
@@ -395,11 +403,10 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
         params_for_model = study.best_params
 
         hidden_units = params_for_model.get("hidden_units", 64)
-        learning_rate = params_for_model.get("learning_rate", 0.045)
+        learning_rate = params_for_model.get("learning_rate", 0.005)
         weight_decay = params_for_model.get("weight_decay", 0.0001)
-        alpha = params_for_model.get("alpha", 0.5)
         gamma_focal = params_for_model.get("gamma_focal", 2.0)
-        criterion = FocalLoss(alpha=alpha, gamma=gamma_focal)
+        criterion = FocalLoss(alpha=focal_alpha, gamma=gamma_focal)
         early_stop_args = _early_stop_args_from(params_for_model)
         for _ in trange(30, desc=f"Runs for {model_name}", leave=False, unit="run"):
             match model_name:
