@@ -67,7 +67,6 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         Gamma_XGB = trial.suggest_float('Gamma_XGB', 0, 5)
         n_estimators = trial.suggest_int('n_estimators', 50, 500, step=50)
         model_instance = XGBClassifier(
-            use_label_encoder=False,
             eval_metric='logloss',
             scale_pos_weight=0.108,
             learning_rate=learning_rate,
@@ -243,15 +242,14 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         y_val = data.y[val_perf_eval].cpu().numpy()
         
         #Fit XGBoost model
-        XGB_model = XGBClassifier(use_label_encoder=False,
-                                  eval_metric='logloss',
+        XGB_model = XGBClassifier(eval_metric='logloss',
                                   scale_pos_weight=9.25,
                                   learning_rate=learning_rate_XGB,
                                   max_depth=max_depth,
                                   n_estimators=n_estimators,
                                   colsample_bytree=colsample_bt,
                                   subsample=subsample,
-                                  tree_method = 'hist',
+                                  tree_method='hist',
                                   reg_lambda=reg_lambda,
                                   reg_alpha=reg_alpha,
                                   device=("cuda" if torch.cuda.is_available() else "cpu")
@@ -375,7 +373,7 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
     focal_alpha = balanced_class_weights(data.y[train_perf_eval])
 
     for model_name in tqdm(models, desc="Models", unit="model"):
-        n_trials = 100
+        n_trials = 200
         if check_study_existence(model_name, data_for_optimization):
             study = optuna.load_study(study_name=f'{model_name}_optimization on {data_for_optimization} dataset', storage='sqlite:///optimization_results.db')
             model_parameters[model_name].append(study.best_params)

@@ -213,7 +213,6 @@ def run_lstm_embeddings_xgb(
 
     # 4) XGBoost on embeddings
     default_xgb = dict(
-        use_label_encoder=False,
         eval_metric="logloss",
         scale_pos_weight=0.108,
         learning_rate=0.1,

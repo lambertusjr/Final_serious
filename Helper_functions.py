@@ -11,6 +11,17 @@ import torch
 import gc
 from contextlib import contextmanager
 
+try:
+    from torch.amp import autocast as _autocast_new  # torch>=2.0 preferred API
+
+    def _autocast_disabled(device_type: str):
+        return _autocast_new(device_type=device_type, enabled=False)
+except (ImportError, AttributeError):
+    from torch.cuda.amp import autocast as _autocast_old  # fallback for older torch
+
+    def _autocast_disabled(device_type: str):
+        return _autocast_old(enabled=False)
+
 def calculate_metrics(y_true, y_pred):
     precision_score_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
     precision_score_illicit = precision_score(y_true, y_pred, pos_label=0, average='binary', zero_division=0) # illicit is class 0
@@ -85,7 +96,8 @@ class FocalLoss(nn.Module):
     def forward(self, inputs, targets):
         logits = inputs.float()
         targets = targets.long()
-        with torch.cuda.amp.autocast(enabled=False):
+        device_type = 'cuda' if logits.is_cuda else 'cpu'
+        with _autocast_disabled(device_type):
             ce_loss = F.cross_entropy(logits, targets, reduction='none')
         pt = torch.exp(-ce_loss)  # prob of the true class
 

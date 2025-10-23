@@ -79,12 +79,12 @@ def pre_train_GIN_encoder(
                 best_epoch = epoch + 1
             else:
                 epochs_without_improvement += 1
-            print(
-                f"Epoch {epoch+1}/{epochs}, "
-                f"Loss: {loss.item():.4f}, "
-                f"Val illicit recall: {val_metrics['recall_illicit']:.4f}, "
-                f"Val illicit F1: {val_metrics['f1_illicit']:.4f}"
-            )
+            #print(
+                #f"Epoch {epoch+1}/{epochs}, "
+                #f"Loss: {loss.item():.4f}, "
+                #f"Val illicit recall: {val_metrics['recall_illicit']:.4f}, "
+                #f"Val illicit F1: {val_metrics['f1_illicit']:.4f}"
+            #)
             encoder.train(); head.train()
 
         if patience and epochs_without_improvement >= patience:
@@ -159,7 +159,6 @@ class XGBEncoder(nn.Module):
             reg_alpha=reg_alpha,
             random_state=random_state,
             tree_method=tree_method,
-            use_label_encoder=False,
             eval_metric="logloss",
             device=device
         )

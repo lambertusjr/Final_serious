@@ -242,7 +242,6 @@ def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf
     reg_alpha = params_for_model.get("xgb_reg_alpha", 0.0)
     #Fit XGBoost model
     xgb_model = XGBClassifier(
-            use_label_encoder=False,
             eval_metric='logloss',
             scale_pos_weight=0.108,
             learning_rate=learning_rate_XGB,
@@ -250,7 +249,7 @@ def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf
             n_estimators=n_estimators,
             colsample_bytree=colsample_bt,
             subsample=subsample,
-            tree_method = 'hist',
+            tree_method='hist',
             reg_lambda=reg_lambda,
             reg_alpha=reg_alpha,
             device=("cuda" if torch.cuda.is_available() else "cpu")

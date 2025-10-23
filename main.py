@@ -10,13 +10,13 @@ XGB_prototype = True
 RF_prototype = True
 parameter_tuning = False
 validation_runs = False
-elliptic_dataset = False
-IBM_dataset = True
+elliptic_dataset = True
+IBM_dataset = False
 #Select IBM dataset type/size
 dataset_type_size = 'HISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
 Full_run = True
 num_epochs = 200
-early_stop_patience = 80
+early_stop_patience = 60
 early_stop_min_delta = 1e-4
 early_stop_logging = True
 
@@ -60,8 +60,8 @@ from torch import Tensor
 from torch_geometric.data import Data, DataLoader
 from torch_geometric.utils import to_networkx
 from torch_geometric.nn import GCNConv, GATConv, GINConv, global_add_pool
-import torch_geometric_temporal
-from torch_geometric_temporal.nn.recurrent import EvolveGCNH, EvolveGCNO
+#import torch_geometric_temporal
+#from torch_geometric_temporal.nn.recurrent import EvolveGCNH, EvolveGCNO
 
 #Importing sklearn libraries
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
@@ -134,7 +134,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['XGB', 'GINe+XGB'],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
+                                                models=['XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
