@@ -106,35 +106,70 @@ class AMLtoGraph(InMemoryDataset):
         accounts = accounts.fillna(0)
         return accounts
 
+    def transaction_feature_aggregate(self, transactions_df):
+        outgoing = transactions_df.groupby('Account').agg(
+            out_tx_count=('Amount Paid', 'count'),
+            out_amount_paid_sum=('Amount Paid', 'sum'),
+            out_amount_paid_mean=('Amount Paid', 'mean'),
+            out_timestamp_mean=('Timestamp', 'mean')
+        )
+
+        incoming = transactions_df.groupby('Account.1').agg(
+            in_tx_count=('Amount Received', 'count'),
+            in_amount_received_sum=('Amount Received', 'sum'),
+            in_amount_received_mean=('Amount Received', 'mean'),
+            in_timestamp_mean=('Timestamp', 'mean')
+        )
+        incoming.index = incoming.index.rename('Account')
+        outgoing.index = outgoing.index.rename('Account')
+
+        stats = outgoing.join(incoming, how='outer')
+        stats = stats.fillna(0)
+        stats['net_amount_sum'] = stats['out_amount_paid_sum'] - stats['in_amount_received_sum']
+        stats['net_tx_count'] = stats['out_tx_count'] - stats['in_tx_count']
+        return stats.reset_index()
+
     def get_edge_df(self, accounts, df):
         accounts = accounts.reset_index(drop=True)
         accounts['ID'] = accounts.index
         mapping_dict = dict(zip(accounts['Account'], accounts['ID']))
+        df = df.copy()
         df['From'] = df['Account'].map(mapping_dict)
         df['To'] = df['Account.1'].map(mapping_dict)
-        df = df.drop(['Account', 'Account.1', 'From Bank', 'To Bank'], axis=1)
 
-        edge_index = torch.stack([torch.from_numpy(df['From'].values), torch.from_numpy(df['To'].values)], dim=0)
+        edge_index = torch.stack(
+            [torch.from_numpy(df['From'].values), torch.from_numpy(df['To'].values)],
+            dim=0
+        ).to(torch.long)
 
-        df = df.drop(['Is Laundering', 'From', 'To'], axis=1)
+        edge_features = df.drop(
+            ['Account', 'Account.1', 'From Bank', 'To Bank', 'Is Laundering', 'From', 'To'],
+            axis=1
+        )
+        edge_attr = torch.from_numpy(edge_features.values).to(torch.float)
 
-        edge_attr = torch.from_numpy(df.values).to(torch.float)
+        reverse_edge_index = edge_index.flip(0)
+        edge_index = torch.cat([edge_index, reverse_edge_index], dim=1)
+        edge_attr = torch.cat([edge_attr, edge_attr.clone()], dim=0)
         return edge_attr, edge_index
 
-    def get_node_attr(self, currency_ls, paying_df,receiving_df, accounts):
+    def get_node_attr(self, currency_ls, paying_df,receiving_df, accounts, transactions_df):
         node_df = self.paid_currency_aggregate(currency_ls, paying_df, accounts)
         node_df = self.received_currency_aggregate(currency_ls, receiving_df, node_df)
-        node_label = torch.from_numpy(node_df['Is Laundering'].values).to(torch.float)
-        node_df = node_df.drop(['Account', 'Is Laundering'], axis=1)
-        node_df = self.df_label_encoder(node_df,['Bank'])
-        node_df = torch.from_numpy(node_df.values).to(torch.float)
-        return node_df, node_label
+        txn_stats = self.transaction_feature_aggregate(transactions_df)
+        node_df = node_df.merge(txn_stats, on='Account', how='left')
+        node_df = node_df.fillna(0)
+        node_label = torch.from_numpy(node_df['Is Laundering'].values).to(torch.long)
+        feature_df = node_df.drop(['Account', 'Is Laundering'], axis=1)
+        feature_df = self.df_label_encoder(feature_df, ['Bank'])
+        node_attr = torch.from_numpy(feature_df.values).to(torch.float)
+        return node_attr, node_label
 
     def process(self):
         df = pd.read_csv(self.raw_paths[0])
         df, receiving_df, paying_df, currency_ls = self.preprocess(df)
         accounts = self.get_all_account(df)
-        node_attr, node_label = self.get_node_attr(currency_ls, paying_df,receiving_df, accounts)
+        node_attr, node_label = self.get_node_attr(currency_ls, paying_df,receiving_df, accounts, df)
         edge_attr, edge_index = self.get_edge_df(accounts, df)
 
         data = Data(x=node_attr,

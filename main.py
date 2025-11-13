@@ -3,17 +3,17 @@
 
 
 seeded_run = False
-prototyping = True
+prototyping = False
 MLP_prototype = True
 svm_prototype = True
 XGB_prototype = True
 RF_prototype = True
 parameter_tuning = False
 validation_runs = False
-elliptic_dataset = True
-IBM_dataset = False
+elliptic_dataset = False
+IBM_dataset = True
 #Select IBM dataset type/size
-dataset_type_size = 'HISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
+dataset_type_size = 'HIMEDIUM'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
 Full_run = True
 num_epochs = 200
 early_stop_patience = 60
@@ -134,7 +134,7 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
+                                                models=['XGB', 'RF','GCN', 'GAT', 'GIN' ],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
