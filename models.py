@@ -129,8 +129,16 @@ class ModelWrapper:
             with _autocast(enabled=self._use_amp):
                 out = self.model(data)
                 loss = self.criterion(out[mask], data.y[mask])
+            
+            # Calculate probabilities
+            probs = F.softmax(out, dim=1)
             pred = out.argmax(dim=1)
-        metrics = calculate_metrics(data.y[mask].cpu().numpy(), pred[mask].cpu().numpy())
+            
+        metrics = calculate_metrics(
+            data.y[mask].cpu().numpy(), 
+            pred[mask].cpu().numpy(),
+            probs[mask].cpu().numpy()
+        )
         return float(loss.detach()), metrics
     
 #%% New models
