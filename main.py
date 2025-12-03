@@ -13,8 +13,9 @@ validation_runs = False
 elliptic_dataset = False
 IBM_dataset = True
 #Select IBM dataset type/size
-dataset_type_size = 'HIMEDIUM'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
+dataset_type_size = 'HISMALL'  # Options: 'HISMALL', 'HIMEDIUM', 'LISMALL', 'LIMEDIUM'
 Full_run = True
+delete_existing_studies = True
 num_epochs = 200
 early_stop_patience = 60
 early_stop_min_delta = 1e-4
@@ -45,8 +46,8 @@ else:
     
 #Importing libraries
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
+#import seaborn as sns
+#import matplotlib.pyplot as plt
 
 import networkx as nx
 
@@ -134,14 +135,15 @@ if Full_run == True:
     from Testing import run_optimization
 
     model_parameters, testing_results = run_optimization(
-                                                models=['XGB', 'RF','GCN', 'GAT', 'GIN' ],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
+                                                models=['GAT', 'GIN' ],# 'XGB', 'RF','GCN', 'GAT', 'GIN', 'XGBe+GIN', 'GINe+XGB'    # Add or remove models as needed
                                                 data=data,
                                                 train_perf_eval=train_perf_eval,
                                                 val_perf_eval=val_perf_eval,
                                                 test_perf_eval=test_perf_eval,
                                                 train_mask=train_mask,
                                                 val_mask=val_mask,
-                                                data_for_optimization=data_for_optimization
+                                                data_for_optimization=data_for_optimization,
+                                                delete_existing_studies=delete_existing_studies
                                                 )
 
 #Save results from optimization

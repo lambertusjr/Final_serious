@@ -182,3 +182,19 @@ def check_study_existence(model_name, data_for_optimization):
         return True
     except KeyError:
         return False
+
+def delete_study_if_exists(model_name, data_for_optimization):
+    """
+    Delete an Optuna study if it exists.
+    """
+    import optuna
+    study_name = f'{model_name}_optimization on {data_for_optimization} dataset'
+    storage_url = 'sqlite:///optimization_results.db'
+    
+    try:
+        optuna.delete_study(study_name=study_name, storage=storage_url)
+        print(f"Study '{study_name}' deleted successfully.")
+    except KeyError:
+        print(f"Study '{study_name}' not found, no need to delete.")
+    except Exception as e:
+        print(f"An error occurred while trying to delete study '{study_name}': {e}")

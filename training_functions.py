@@ -261,3 +261,80 @@ def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf
     test_pred = xgb_model.predict(x_test)
     test_metrics = calculate_metrics(y_test, test_pred)
     return test_metrics
+
+def train_and_validate_minibatch(
+    model_wrapper,
+    data,
+    train_loader,
+    val_loader,
+    num_epochs,
+    best_f1=-1,
+    best_f1_model_wts=None,
+    patience=None,
+    min_delta=0.0,
+    log_early_stop=False
+):
+    metrics = {
+        'precision_weighted': [],
+        'precision_illicit': [],
+        'recall_weighted': [],
+        'recall_illicit': [],
+        'f1_weighted': [],
+        'f1_illicit': []
+    }
+    epochs_without_improvement = 0
+    best_epoch = -1
+
+    for epoch in range(num_epochs):
+        train_loss = 0
+        model_wrapper.model.train()
+        for batch in train_loader:
+            loss = model_wrapper.train_step(batch, batch.input_id)
+            train_loss += loss
+        train_loss /= len(train_loader)
+
+        val_loss = 0
+        all_preds = []
+        all_labels = []
+        model_wrapper.model.eval()
+        with torch.no_grad():
+            for batch in val_loader:
+                out = model_wrapper.model(batch)
+                preds = out.argmax(dim=-1)
+                all_preds.append(preds)
+                all_labels.append(batch.y)
+        
+        all_preds = torch.cat(all_preds, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
+        val_metrics = calculate_metrics(all_labels.cpu().numpy(), all_preds.cpu().numpy())
+        
+        metrics['precision_weighted'].append(val_metrics['precision_weighted'])
+        metrics['precision_illicit'].append(val_metrics['precision_illicit'])
+        metrics['recall_weighted'].append(val_metrics['recall_weighted'])
+        metrics['recall_illicit'].append(val_metrics['recall_illicit'])
+        metrics['f1_weighted'].append(val_metrics['f1_weighted'])
+        metrics['f1_illicit'].append(val_metrics['f1_illicit'])
+
+        current_f1 = val_metrics['f1_illicit']
+        improved = current_f1 > (best_f1 + min_delta)
+        if improved:
+            best_f1, best_f1_model_wts = update_best_weights(
+                model_wrapper.model,
+                best_f1,
+                current_f1,
+                best_f1_model_wts
+            )
+            epochs_without_improvement = 0
+            best_epoch = epoch + 1
+        else:
+            epochs_without_improvement += 1
+
+        if patience and epochs_without_improvement >= patience:
+            if log_early_stop:
+                print(
+                    f"Early stopping triggered at epoch {epoch + 1} "
+                    f"(best F1: {best_f1:.4f} @ epoch {best_epoch})"
+                )
+            break
+
+    return metrics, best_f1_model_wts, best_f1

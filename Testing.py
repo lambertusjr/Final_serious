@@ -10,6 +10,7 @@ from Helper_functions import (
     calculate_metrics,
     run_trial_with_cleanup,
     check_study_existence,
+    delete_study_if_exists,
     balanced_class_weights,
 )
 from training_functions import train_and_validate, train_and_test
@@ -38,7 +39,7 @@ def _early_stop_args_from(source: dict) -> dict:
 
 def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, val_mask):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    hidden_units = trial.suggest_int('hidden_units', 32, 256)
+    hidden_units = trial.suggest_int('hidden_units', 32, 128)
     learning_rate = trial.suggest_float('learning_rate', 5e-5, 5e-3, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-2, log=True)
     
@@ -144,10 +145,7 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         model_wrapper = ModelWrapper(model_instance, optimizer, criterion)
         model_wrapper.model.to(device)
 
-    data = data.to(device)
-    train_perf_eval = train_perf_eval.to(device)
-    val_perf_eval = val_perf_eval.to(device)
-    
+    # Data is already on the correct device
     
     if model in wrapper_models:
         metrics, best_model_wts, best_f1 = train_and_validate(
@@ -260,12 +258,34 @@ def objective(trial, model, data, train_perf_eval, val_perf_eval, train_mask, va
         
         val_pred = XGB_model.predict(x_val)
         val_metrics = calculate_metrics(y_val, val_pred)
+        del encoder, embedding_data, XGB_model
         return val_metrics['f1_illicit']
+
+    # Explicitly delete objects to free up memory
+    if 'model_instance' in locals():
+        del model_instance
+    if 'model_wrapper' in locals():
+        del model_wrapper
+    if 'optimizer' in locals():
+        del optimizer
+    if 'emb_data' in locals():
+        del emb_data
+    if 'xgbe' in locals():
+        del xgbe
 
 from training_functions import train_and_test_NMW_models
 
-def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eval, train_mask, val_mask, data_for_optimization):
+def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eval, train_mask, val_mask, data_for_optimization, delete_existing_studies=False):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
+    # Move data to GPU once before optimization loop
+    data = data.to(device)
+    train_perf_eval = train_perf_eval.to(device)
+    val_perf_eval = val_perf_eval.to(device)
+    test_perf_eval = test_perf_eval.to(device)
+    train_mask = train_mask.to(device)
+    val_mask = val_mask.to(device)
+
     model_parameters = {
         'MLP': [],
         'SVM': [],
@@ -373,6 +393,8 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
     focal_alpha = balanced_class_weights(data.y[train_perf_eval])
 
     for model_name in tqdm(models, desc="Models", unit="model"):
+        if delete_existing_studies:
+            delete_study_if_exists(model_name, data_for_optimization)
         n_trials = 200
         if check_study_existence(model_name, data_for_optimization):
             study = optuna.load_study(study_name=f'{model_name}_optimization on {data_for_optimization} dataset', storage='sqlite:///optimization_results.db')
@@ -552,4 +574,4 @@ def run_optimization(models, data, train_perf_eval, val_perf_eval, test_perf_eva
     return model_parameters, testing_results
 
 
- 
+
