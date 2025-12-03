@@ -38,12 +38,16 @@ def train_and_validate(
 
     
     metrics = {
+        'accuracy': [],
         'precision_weighted': [],
         'precision_illicit': [],
         'recall_weighted': [],
         'recall_illicit': [],
         'f1_weighted': [],
-        'f1_illicit': []
+        'f1_illicit': [],
+        'roc_auc': [],
+        'prauc': [],
+        'kappa': []
     }
     epochs_without_improvement = 0
     best_epoch = -1
@@ -54,12 +58,16 @@ def train_and_validate(
         val_loss, val_metrics = model_wrapper.evaluate(data, val_perf_eval)
         #print(f'Validation F1 Score: {val_metrics["f1_illicit"]:.4f}')
         
+        metrics['accuracy'].append(val_metrics['accuracy'])
         metrics['precision_weighted'].append(val_metrics['precision_weighted'])
         metrics['precision_illicit'].append(val_metrics['precision_illicit'])
         metrics['recall_weighted'].append(val_metrics['recall_weighted'])
         metrics['recall_illicit'].append(val_metrics['recall_illicit'])
         metrics['f1_weighted'].append(val_metrics['f1_weighted'])
         metrics['f1_illicit'].append(val_metrics['f1_illicit'])
+        metrics['roc_auc'].append(val_metrics['roc_auc'])
+        metrics['prauc'].append(val_metrics['prauc'])
+        metrics['kappa'].append(val_metrics['kappa'])
 
         current_f1 = val_metrics['f1_illicit']
         improved = current_f1 > (best_f1 + min_delta)
@@ -133,7 +141,7 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             C = params_for_model.get("C", 1.0)
             degree = params_for_model.get("degree", 3)
             kernel = params_for_model.get("kernel", 'rbf')
-            svm_model = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree)
+            svm_model = SVC(kernel=kernel, C=C, class_weight='balanced', degree=degree, probability=True)
             combined_mask = train_perf_eval | val_perf_eval
             x_train = data.x[combined_mask].detach().cpu().numpy()
             y_train = data.y[combined_mask].detach().cpu().numpy()
@@ -144,7 +152,8 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             x_test = scaler.transform(x_test)
             svm_model.fit(x_train, y_train)
             pred = svm_model.predict(x_test)
-            metrics = calculate_metrics(y_test, pred)
+            probs = svm_model.predict_proba(x_test)
+            metrics = calculate_metrics(y_test, pred, probs)
             return metrics
         case "RF":
             n_estimators = params_for_model.get("n_estimators", 100)
@@ -160,7 +169,8 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             x_test = scaler.transform(x_test)
             rf_model.fit(x_train, y_train)
             pred = rf_model.predict(x_test)
-            metrics = calculate_metrics(y_test, pred)
+            probs = rf_model.predict_proba(x_test)
+            metrics = calculate_metrics(y_test, pred, probs)
             return metrics
         case "XGB":
             from xgboost import XGBClassifier
@@ -180,7 +190,8 @@ def train_and_test_NMW_models(model_name, data, train_perf_eval, val_perf_eval, 
             xgb_model = XGBClassifier(max_depth=max_depth, n_estimators=n_estimators, scale_pos_weight=scale_pos_weight)
             xgb_model.fit(x_train, y_train)
             pred = xgb_model.predict(x_test)
-            metrics = calculate_metrics(y_test, pred)
+            probs = xgb_model.predict_proba(x_test)
+            metrics = calculate_metrics(y_test, pred, probs)
             return metrics
 from torch_geometric.data import Data
 
@@ -259,7 +270,8 @@ def train_and_test_GINeXGB(data: Data, train_perf_eval, val_perf_eval, test_perf
     
     #Generate predictions
     test_pred = xgb_model.predict(x_test)
-    test_metrics = calculate_metrics(y_test, test_pred)
+    test_probs = xgb_model.predict_proba(x_test)
+    test_metrics = calculate_metrics(y_test, test_pred, test_probs)
     return test_metrics
 
 def train_and_validate_minibatch(

@@ -5,6 +5,10 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report,
     ConfusionMatrixDisplay,
+    accuracy_score,
+    roc_auc_score,
+    average_precision_score,
+    cohen_kappa_score,
 )
 import numpy as np
 import torch
@@ -22,7 +26,10 @@ except (ImportError, AttributeError):
     def _autocast_disabled(device_type: str):
         return _autocast_old(enabled=False)
 
-def calculate_metrics(y_true, y_pred):
+def calculate_metrics(y_true, y_pred, y_prob=None):
+    # Standard metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    
     precision_score_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
     precision_score_illicit = precision_score(y_true, y_pred, pos_label=0, average='binary', zero_division=0) # illicit is class 0
     
@@ -32,14 +39,66 @@ def calculate_metrics(y_true, y_pred):
     f1_score_weighted = f1_score(y_true, y_pred, average='weighted')
     f1_score_illicit = f1_score(y_true, y_pred, pos_label=0, average='binary') # illicit is class 0
     
+    kappa = cohen_kappa_score(y_true, y_pred)
+    
     metrics = {
+        'accuracy': accuracy,
         'precision_weighted': precision_score_weighted,
         'precision_illicit': precision_score_illicit,
         'recall_weighted': recall_score_weighted,
         'recall_illicit': recall_score_illicit,
         'f1_weighted': f1_score_weighted,
-        'f1_illicit': f1_score_illicit
+        'f1_illicit': f1_score_illicit,
+        'kappa': kappa
     }
+
+    # Metrics requiring probabilities
+    if y_prob is not None:
+        # Assuming y_prob has shape (N, 2) or (N,)
+        # If (N, 2), we want probability of positive class (which is usually class 1, but here illicit is 0?)
+        # Wait, usually illicit is the minority class. Let's check.
+        # In this dataset, usually 1 is illicit?
+        # The code says: pos_label=0 # illicit is class 0
+        # If illicit is class 0, then we should use probability of class 0 for ROC/PR AUC if we want "illicit" specific AUC.
+        # However, standard ROC AUC is usually for the "positive" class.
+        # Let's calculate ROC AUC for the illicit class (class 0).
+        
+        if y_prob.ndim == 2:
+            prob_illicit = y_prob[:, 0] # Probability of class 0
+        else:
+            # If 1D, assume it's prob of class 1. So prob of class 0 is 1 - prob.
+            prob_illicit = 1 - y_prob
+            
+        # roc_auc_score handles binary labels. pos_label=0 means we treat 0 as positive.
+        # But roc_auc_score usually expects y_score to be prob of positive class.
+        # If we say pos_label=0, we should pass prob of class 0.
+        try:
+            roc_auc = roc_auc_score(y_true, prob_illicit) # By default, it might expect 1 as positive.
+            # Actually, sklearn roc_auc_score: "The "greater is better" meaning of the score... y_score : array-like... Target scores."
+            # If we want AUC for class 0, we treat class 0 as 1 and class 1 as 0 for the calculation, OR we just pass prob of class 0 and let it figure out?
+            # No, we must be careful.
+            # Let's just calculate standard ROC AUC (weighted or macro) or specifically for class 0.
+            # Given the request "roc_auc", I'll provide the AUC for the illicit class since that's the focus.
+            
+            # To be safe with sklearn:
+            # y_true has 0s and 1s.
+            # If we want AUC for class 0:
+            # We can flip labels: y_true_flipped = 1 - y_true (so 0 becomes 1)
+            # And use prob_illicit.
+            roc_auc = roc_auc_score(1 - y_true, prob_illicit)
+            
+            prauc = average_precision_score(1 - y_true, prob_illicit)
+            
+            metrics['roc_auc'] = roc_auc
+            metrics['prauc'] = prauc
+        except ValueError:
+            # Handle cases where only one class is present in y_true
+            metrics['roc_auc'] = -1
+            metrics['prauc'] = -1
+    else:
+        metrics['roc_auc'] = -1
+        metrics['prauc'] = -1
+        
     return metrics
 
 import torch
